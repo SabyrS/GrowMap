@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>🌦 Weather and reccomendation</h2>
+
+<div class="weather-card">
+  <p><strong>Temp:</strong> {{ weather.temp }} °C</p>
+  <p><strong>Overall:</strong> {{ weather.condition }}</p>
+  <hr>
+  <p><strong>reccomendation:</strong></p>
+  <p>{{ weather.recommendation }}</p>
+</div>
+
+{% endblock %}

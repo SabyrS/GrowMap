@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>📊 Analytics</h2>
+
+<ul>
+  <li>🌱 Number of plants: {{ analytics.plants_count }}</li>
+  <li>💧 Number of watering: {{ analytics.waterings }}</li>
+</ul>
+
+<hr>
+
+<p><strong>Conclusion:</strong></p>
+<p>{{ analytics.summary }}</p>
+
+{% endblock %}
