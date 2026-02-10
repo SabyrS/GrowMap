@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GrowMap — Garden Planning Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-bg"></div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">GM</div>
+      <div>
+        <div class="brand-name">GrowMap</div>
+        <div class="brand-sub">Garden and balcony planning</div>
+      </div>
+    </div>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#docs">Docs</a>
+      <a class="ghost" href="https://growmap.onrender.com" target="_blank" rel="noopener">Open app</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div class="card">
+        <div class="badge">Free hosting: GitHub Pages + Render</div>
+        <h1>Plan plantings. Track care. Grow smarter.</h1>
+        <p>
+          GrowMap helps organize garden and balcony plantings with interactive maps,
+          weather-aware recommendations, compatibility warnings, and analytics.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="https://growmap.onrender.com" target="_blank" rel="noopener">Launch GrowMap</a>
+          <a class="button ghost" href="#docs">View documentation</a>
+        </div>
+        <p class="hint">Update the Render URL if needed.</p>
+      </div>
+      <div class="card soft">
+        <h2 class="section-title">Demo flow</h2>
+        <ol class="steps">
+          <li>Create a map with real plot sizes.</li>
+          <li>Add plants, buildings, and zones.</li>
+          <li>Log watering and harvest results.</li>
+          <li>Check weather advice and analytics.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <h2 class="section-title">Key features</h2>
+      <div class="grid three">
+        <div class="card">Private accounts and maps per user.</div>
+        <div class="card">Interactive SVG map with click-to-inspect.</div>
+        <div class="card">Plant catalog with care requirements.</div>
+        <div class="card">Weather recommendations, not raw data.</div>
+        <div class="card">Compatibility warnings for close plantings.</div>
+        <div class="card">Harvest efficiency vs average yield.</div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section">
+      <h2 class="section-title">Architecture</h2>
+      <div class="grid two">
+        <div class="card">
+          <h3>Frontend (GitHub Pages)</h3>
+          <p>
+            Static landing and documentation served from <strong>/docs</strong>.
+            The app itself runs on Render.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Backend (Render)</h3>
+          <p>
+            Flask + SQLite, weather API integration, analytics, and activity logs.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="docs" class="section">
+      <h2 class="section-title">Documentation</h2>
+      <div class="grid two">
+        <a class="card soft" href="API.md">API Reference</a>
+        <a class="card soft" href="ML.md">ML Usage</a>
+        <a class="card soft" href="Presentation.pdf">Presentation</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

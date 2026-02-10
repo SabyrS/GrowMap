@@ -42,6 +42,20 @@ Personal assistant for planning and analyzing garden or balcony plantings.
 - ML usage: [docs/ML.md](docs/ML.md)
 - Presentation: [docs/Presentation.pdf](docs/Presentation.pdf)
 
+## Deployment (Free)
+### Frontend (GitHub Pages)
+1. Ensure GitHub Pages is set to use the `/docs` folder.
+2. The landing page lives at `docs/index.html`.
+
+### Backend (Render)
+1. Create a new Web Service from this repo.
+2. Build command: `pip install -r requirements.txt`
+3. Start command: `gunicorn app:app`
+4. Set environment variables (optional):
+   - `SECRET_KEY` for session security.
+
+Update the Render URL inside `docs/index.html` if you change the service name.
+
 ## Notes
 - The database file is local and ignored by Git.
 - Weather data comes from Open-Meteo.
