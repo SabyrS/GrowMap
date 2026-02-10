@@ -1,11 +1,20 @@
 const svg = document.getElementById("editor");
 
+
 let currentMode = "create";
 let selectedObject = null;
-let selectedElement = null;
+
 let polygonPoints = [];
-let objects = [];
-let compatPairs = [];
+let tempLines = [];
+
+function snapValue(v) {
+  const enabled = document.getElementById("snap-enabled").checked;
+  if (!enabled) return v;
+
+  const step = parseFloat(document.getElementById("snap-step").value);
+  return Math.round(v / step) * step;
+}
+
 
 function setMode(mode) {
   currentMode = mode;
@@ -13,44 +22,106 @@ function setMode(mode) {
   clearSelection();
 }
 
-function drawGrid() {
-  for (let x = 0; x <= MAP_WIDTH_M; x++) {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", x * SCALE);
-    line.setAttribute("y1", 0);
-    line.setAttribute("x2", x * SCALE);
-    line.setAttribute("y2", MAP_HEIGHT_M * SCALE);
-    line.setAttribute("stroke", "#eee");
-    svg.appendChild(line);
-  }
+let viewBox = {
+  x: 0,
+  y: 0,
+  w: MAP_WIDTH_M * SCALE,
+  h: MAP_HEIGHT_M * SCALE
+};
 
-  for (let y = 0; y <= MAP_HEIGHT_M; y++) {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", 0);
-    line.setAttribute("y1", y * SCALE);
-    line.setAttribute("x2", MAP_WIDTH_M * SCALE);
-    line.setAttribute("y2", y * SCALE);
-    line.setAttribute("stroke", "#eee");
-    svg.appendChild(line);
-  }
+function updateViewBox() {
+  svg.setAttribute(
+    "viewBox",
+    `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`
+  );
+}
+updateViewBox();
+
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const zoom = e.deltaY > 0 ? 1.1 : 0.9;
+
+  viewBox.w *= zoom;
+  viewBox.h *= zoom;
+
+  updateViewBox();
+});
+
+let isPanning = false;
+let start = {};
+
+svg.addEventListener("mousedown", (e) => {
+  if (currentMode !== "select") return;
+  isPanning = true;
+  start = { x: e.clientX, y: e.clientY };
+});
+
+svg.addEventListener("mousemove", (e) => {
+  if (!isPanning) return;
+
+  const dx = (start.x - e.clientX);
+  const dy = (start.y - e.clientY);
+
+  viewBox.x += dx;
+  viewBox.y += dy;
+
+  start = { x: e.clientX, y: e.clientY };
+  updateViewBox();
+});
+
+svg.addEventListener("mouseup", () => isPanning = false);
+svg.addEventListener("mouseleave", () => isPanning = false);
+
+
+function zoomIn() {
+  viewBox.w *= 0.8;
+  viewBox.h *= 0.8;
+  updateViewBox();
 }
 
-function loadCompat() {
-  return fetch("/api/compat")
-    .then(r => r.json())
-    .then(data => {
-      compatPairs = data;
-    });
+function zoomOut() {
+  viewBox.w *= 1.2;
+  viewBox.h *= 1.2;
+  updateViewBox();
 }
+
+function resetView() {
+  viewBox = {
+    x: 0,
+    y: 0,
+    w: MAP_WIDTH_M * SCALE,
+    h: MAP_HEIGHT_M * SCALE
+  };
+  updateViewBox();
+}
+
+
+
+for (let x = 0; x <= MAP_WIDTH_M; x++) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", x * SCALE);
+  line.setAttribute("y1", 0);
+  line.setAttribute("x2", x * SCALE);
+  line.setAttribute("y2", MAP_HEIGHT_M * SCALE);
+  line.setAttribute("stroke", "#ddd");
+  svg.appendChild(line);
+}
+
+for (let y = 0; y <= MAP_HEIGHT_M; y++) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", 0);
+  line.setAttribute("y1", y * SCALE);
+  line.setAttribute("x2", MAP_WIDTH_M * SCALE);
+  line.setAttribute("y2", y * SCALE);
+  line.setAttribute("stroke", "#ddd");
+  svg.appendChild(line);
+}
+
 
 function loadObjects() {
-  return fetch(`/api/maps/${MAP_ID}/objects`)
+  fetch(`/api/maps/${MAP_ID}/objects`)
     .then(r => r.json())
-    .then(data => {
-      objects = data;
-      data.forEach(drawObject);
-      renderConflicts();
-    });
+    .then(data => data.forEach(drawObject));
 }
 
 function drawObject(obj) {
@@ -63,99 +134,120 @@ function drawObject(obj) {
     circle.setAttribute("cx", obj.x * SCALE);
     circle.setAttribute("cy", obj.y * SCALE);
     circle.setAttribute("r", obj.size * SCALE);
-    circle.setAttribute("fill", obj.color || "#4caf50");
+    circle.setAttribute("fill", obj.color);
     circle.dataset.id = obj.id;
 
     circle.addEventListener("click", (e) => {
       e.stopPropagation();
       handleObjectClick(obj, circle);
-    });
+    }); 
+
 
     svg.appendChild(circle);
   }
 
   if (obj.shape === "rect") {
-    const rect = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "rect"
-    );
+  const rect = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "rect"
+  );
 
-    rect.setAttribute("x", obj.x * SCALE);
-    rect.setAttribute("y", obj.y * SCALE);
-    rect.setAttribute("width", obj.width * SCALE);
-    rect.setAttribute("height", obj.height * SCALE);
-    rect.setAttribute("fill", obj.color || "#9e9e9e");
-    rect.setAttribute("opacity", 0.8);
+  rect.setAttribute("x", obj.x * SCALE);
+  rect.setAttribute("y", obj.y * SCALE);
+  rect.setAttribute("width", obj.width * SCALE);
+  rect.setAttribute("height", obj.height * SCALE);
+  rect.setAttribute("fill", obj.color);
+  rect.setAttribute("opacity", 0.7);
 
-    rect.addEventListener("click", (e) => {
-      e.stopPropagation();
-      handleObjectClick(obj, rect);
-    });
+  rect.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleObjectClick(obj, rect);
+  });
 
-    svg.appendChild(rect);
+  svg.appendChild(rect);
   }
 
   if (obj.shape === "polygon") {
-    const poly = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "polygon"
-    );
+  const poly = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "polygon"
+  );
 
-    const points = (obj.points || [])
-      .map(p => `${p[0] * SCALE},${p[1] * SCALE}`)
-      .join(" ");
+  const points = obj.points
+    .map(p => `${p[0] * SCALE},${p[1] * SCALE}`)
+    .join(" ");
 
-    poly.setAttribute("points", points);
-    poly.setAttribute("fill", obj.color || "#ffcc00");
-    poly.setAttribute("opacity", 0.4);
+  poly.setAttribute("points", points);
+  poly.setAttribute("fill", obj.color);
+  poly.setAttribute("opacity", 0.4);
 
-    poly.addEventListener("click", (e) => {
-      e.stopPropagation();
-      handleObjectClick(obj, poly);
-    });
+  poly.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleObjectClick(obj, poly);
+  });
 
-    svg.appendChild(poly);
+  svg.appendChild(poly);
   }
 }
+
+
+// svg.addEventListener("click", (e) => {
+//   const rect = svg.getBoundingClientRect();
+//   const x = ((e.clientX - rect.left) / SCALE).toFixed(2);
+//   const y = ((e.clientY - rect.top) / SCALE).toFixed(2);
+
+//   const obj = getCurrentObjectData(parseFloat(x), parseFloat(y));
+//   createObject(obj);
+// });
 
 svg.addEventListener("click", (e) => {
   if (currentMode !== "create") return;
 
   const rect = svg.getBoundingClientRect();
-  const x = ((e.clientX - rect.left) / SCALE).toFixed(2);
-  const y = ((e.clientY - rect.top) / SCALE).toFixed(2);
+  let x = (e.clientX - rect.left) / SCALE;
+  let y = (e.clientY - rect.top) / SCALE;
+
+  x = snapValue(x);
+  y = snapValue(y);
+
+  x = x.toFixed(2);
+  y = y.toFixed(2);
 
   const shape = document.getElementById("obj-shape").value;
 
+  
   if (shape === "polygon") {
-    polygonPoints.push([parseFloat(x), parseFloat(y)]);
-    drawTempPoint(x, y);
-    return;
+  const px = parseFloat(x);
+  const py = parseFloat(y);
+
+  if (polygonPoints.length > 0) {
+    const last = polygonPoints[polygonPoints.length - 1];
+    drawTempLine(last[0], last[1], px, py);
   }
+
+  polygonPoints.push([px, py]);
+  drawTempPoint(px, py);
+  return;
+  }
+
 
   const obj = getCurrentObjectData(parseFloat(x), parseFloat(y));
   createObject(obj);
 });
 
+
+
 function getCurrentObjectData(x, y) {
   const shape = document.getElementById("obj-shape").value;
-  const type = document.getElementById("obj-type").value;
 
   const obj = {
-    type: type,
+    type: document.getElementById("obj-type").value,
     shape: shape,
     name: document.getElementById("obj-name").value || "Object",
     x: x,
     y: y,
     color: document.getElementById("obj-color").value
   };
-
-  if (type === "plant") {
-    const plantId = document.getElementById("plant-id").value;
-    obj.plant_id = plantId ? parseInt(plantId, 10) : null;
-    obj.planted_at = document.getElementById("planted-at").value || null;
-    obj.bed_type = document.getElementById("bed-type").value;
-  }
 
   if (shape === "circle") {
     obj.size = parseFloat(document.getElementById("obj-size").value);
@@ -165,6 +257,11 @@ function getCurrentObjectData(x, y) {
     obj.width = parseFloat(document.getElementById("obj-width").value);
     obj.height = parseFloat(document.getElementById("obj-height").value);
   }
+
+  // if (currentMode === "create" && currentShape === "polygon") {
+  // polygonPoints.push([x, y]);
+  // drawTempPoint(x, y);
+  // }
 
   return obj;
 }
@@ -182,38 +279,54 @@ function handleObjectClick(obj, element) {
 
 function selectObject(obj, element) {
   clearSelection();
-  selectedObject = obj;
-  selectedElement = element;
+  selectedObject = element;
 
-  element.setAttribute("stroke", "#111");
+  element.setAttribute("stroke", "black");
   element.setAttribute("stroke-width", "2");
 
-  const info = document.getElementById("object-info");
-  const plantBlock = obj.plant_name
-    ? `Plant: <strong>${obj.plant_name}</strong><br>
-       Bed: ${obj.bed_type || "-"}<br>
-       Planted: ${obj.planted_at || "-"}<br>
-       Water: ${obj.water_need || "-"} / Sun: ${obj.sun_need || "-"}<br>
-       Avg yield: ${obj.avg_yield || "-"} ${obj.yield_unit || ""}<br>`
-    : "";
-
-  info.innerHTML = `
-    <strong>${obj.name || "Object"}</strong><br>
-    Type: ${obj.type}<br>
-    Shape: ${obj.shape}<br>
-    X: ${obj.x} m, Y: ${obj.y} m<br>
-    ${plantBlock}
+  let info = `
+    <b>${obj.name}</b><br>
+    Тип: ${obj.type}<br>
+    Форма: ${obj.shape}<br>
   `;
+
+  if (obj.shape !== "polygon") {
+    info += `
+      X: ${obj.x} м<br>
+      Y: ${obj.y} м<br>
+    `;
+  } else {
+    info += `
+      Точек: ${obj.points.length}<br>
+    `;
+  }
+
+  document.getElementById("object-info").innerHTML = info;
 }
+
 
 function clearSelection() {
   const all = svg.querySelectorAll("[stroke]");
   all.forEach(el => el.removeAttribute("stroke"));
 }
 
+function drawTempLine(x1, y1, x2, y2) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", x1 * SCALE);
+  line.setAttribute("y1", y1 * SCALE);
+  line.setAttribute("x2", x2 * SCALE);
+  line.setAttribute("y2", y2 * SCALE);
+  line.setAttribute("stroke", "#888");
+  line.setAttribute("stroke-dasharray", "4");
+
+  svg.appendChild(line);
+  tempLines.push(line);
+}
+
+
 function finishPolygon() {
   if (polygonPoints.length < 3) {
-    alert("Polygon needs at least 3 points");
+    alert("Минимум 3 точки");
     return;
   }
 
@@ -221,12 +334,28 @@ function finishPolygon() {
     type: "zone",
     shape: "polygon",
     points: polygonPoints,
-    color: "#ffcc00",
-    name: "Zone"
+    color: document.getElementById("obj-color").value
   });
 
   polygonPoints = [];
+  tempLines.forEach(l => l.remove());
+  tempLines = [];
 }
+
+
+
+
+// function getCurrentObjectData(x, y) {
+//   return {
+//     type: document.getElementById("obj-type").value,
+//     shape: document.getElementById("obj-shape").value,
+//     name: document.getElementById("obj-name").value || "Object",
+//     x: x,
+//     y: y,
+//     size: parseFloat(document.getElementById("obj-size").value),
+//     color: document.getElementById("obj-color").value
+//   };
+// }
 
 function createObject(obj) {
   fetch(`/api/maps/${MAP_ID}/objects`, {
@@ -235,6 +364,7 @@ function createObject(obj) {
     body: JSON.stringify(obj)
   }).then(() => location.reload());
 }
+
 
 function removeObject(id, element) {
   fetch(`/api/objects/${id}`, {
@@ -251,121 +381,5 @@ function drawTempPoint(x, y) {
   svg.appendChild(c);
 }
 
-function logWatering() {
-  fetch("/api/logs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      map_id: MAP_ID,
-      action_type: "watering",
-      plant_object_id: selectedObject ? selectedObject.id : null
-    })
-  }).then(() => loadLogs());
-}
 
-function openHarvest() {
-  const form = document.getElementById("harvest-form");
-  form.style.display = form.style.display === "none" ? "block" : "none";
-}
-
-function submitHarvest() {
-  if (!selectedObject) {
-    alert("Select a plant first");
-    return;
-  }
-
-  const amount = parseFloat(document.getElementById("harvest-amount").value);
-  const unit = document.getElementById("harvest-unit").value;
-
-  fetch("/api/harvest", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      map_id: MAP_ID,
-      plant_object_id: selectedObject.id,
-      amount: amount,
-      unit: unit
-    })
-  })
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById("harvest-result").innerText =
-        data.efficiency
-          ? `Efficiency: ${data.efficiency}% (avg ${data.avg_yield} ${data.yield_unit})`
-          : "Harvest saved";
-      loadLogs();
-    });
-}
-
-function loadLogs() {
-  fetch(`/api/logs?map_id=${MAP_ID}`)
-    .then(r => r.json())
-    .then(data => {
-      const list = document.getElementById("log-list");
-      list.innerHTML = "";
-      data.forEach(item => {
-        const div = document.createElement("div");
-        div.className = "log-item";
-        const date = item.created_at.slice(0, 10);
-        div.innerText = `${date} - ${item.action_type}`;
-        list.appendChild(div);
-      });
-    });
-}
-
-function getCenter(obj) {
-  if (obj.shape === "circle") {
-    return { x: obj.x, y: obj.y };
-  }
-  if (obj.shape === "rect") {
-    return { x: obj.x + (obj.width / 2), y: obj.y + (obj.height / 2) };
-  }
-  return null;
-}
-
-function renderConflicts() {
-  const list = document.getElementById("conflict-list");
-  list.innerHTML = "";
-
-  const plants = objects.filter(o => o.type === "plant" && o.plant_name);
-  for (let i = 0; i < plants.length; i++) {
-    for (let j = i + 1; j < plants.length; j++) {
-      const a = plants[i];
-      const b = plants[j];
-      const ca = getCenter(a);
-      const cb = getCenter(b);
-      if (!ca || !cb) continue;
-
-      const dist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
-      if (dist > 0.8) continue;
-
-      const pair = compatPairs.find(p =>
-        (p.plant_a === a.plant_name && p.plant_b === b.plant_name) ||
-        (p.plant_a === b.plant_name && p.plant_b === a.plant_name)
-      );
-
-      if (pair && pair.level !== "good") {
-        const item = document.createElement("li");
-        item.className = "conflict-item";
-        item.innerText = `${a.plant_name} + ${b.plant_name}: ${pair.note}`;
-        list.appendChild(item);
-      }
-    }
-  }
-
-  if (list.children.length === 0) {
-    const item = document.createElement("li");
-    item.className = "conflict-item";
-    item.innerText = "No risky combinations nearby.";
-    list.appendChild(item);
-  }
-}
-
-function boot() {
-  drawGrid();
-  Promise.all([loadCompat(), loadObjects()]).then(() => {
-    loadLogs();
-  });
-}
-
-boot();
+loadObjects();
