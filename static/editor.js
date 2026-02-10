@@ -3,101 +3,80 @@ const svg = document.getElementById("editor");
 let currentMode = "create";
 let selectedObject = null;
 let selectedElement = null;
-
-let objects = [];
-
 let polygonPoints = [];
-let tempLines = [];
+let objects = [];
 let compatPairs = [];
-
+let viewBox = { x: 0, y: 0, width: 0, height: 0 };
+let zoomLevel = 1;
+let isPanning = false;
+let lastMousePos = { x: 0, y: 0 };
 
 function snapValue(v) {
-  const enabled = document.getElementById("snap-enabled")?.checked;
-  if (!enabled) return v;
-
-  const step = parseFloat(document.getElementById("snap-step")?.value || 0.5);
-  return Math.round(v / step) * step;
+  const snapCheckbox = document.getElementById("snap-enabled");
+  if (!snapCheckbox || !snapCheckbox.checked) return parseFloat(v).toFixed(2);
+  
+  const step = parseFloat(document.getElementById("snap-step").value);
+  const snapped = Math.round(v / step) * step;
+  return parseFloat(snapped.toFixed(2));
 }
-
-
-function setMode(mode) {
-  currentMode = mode;
-  selectedObject = null;
-  selectedElement = null;
-  clearSelection();
-}
-
-
-let viewBox = {
-  x: 0,
-  y: 0,
-  w: MAP_WIDTH_M * SCALE,
-  h: MAP_HEIGHT_M * SCALE
-};
-
-function updateViewBox() {
-  svg.setAttribute(
-    "viewBox",
-    `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`
-  );
-}
-updateViewBox();
-
-svg.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  const zoom = e.deltaY > 0 ? 1.1 : 0.9;
-  viewBox.w *= zoom;
-  viewBox.h *= zoom;
-  updateViewBox();
-});
-
-let isPanning = false;
-let panStart = {};
-
-svg.addEventListener("mousedown", (e) => {
-  if (currentMode !== "select") return;
-  isPanning = true;
-  panStart = { x: e.clientX, y: e.clientY };
-});
-
-svg.addEventListener("mousemove", (e) => {
-  if (!isPanning) return;
-
-  const dx = panStart.x - e.clientX;
-  const dy = panStart.y - e.clientY;
-
-  viewBox.x += dx;
-  viewBox.y += dy;
-
-  panStart = { x: e.clientX, y: e.clientY };
-  updateViewBox();
-});
-
-svg.addEventListener("mouseup", () => (isPanning = false));
-svg.addEventListener("mouseleave", () => (isPanning = false));
 
 function zoomIn() {
-  viewBox.w *= 0.8;
-  viewBox.h *= 0.8;
+  zoomLevel *= 1.2;
   updateViewBox();
 }
 
 function zoomOut() {
-  viewBox.w *= 1.2;
-  viewBox.h *= 1.2;
+  zoomLevel /= 1.2;
   updateViewBox();
 }
 
 function resetView() {
-  viewBox = {
-    x: 0,
-    y: 0,
-    w: MAP_WIDTH_M * SCALE,
-    h: MAP_HEIGHT_M * SCALE
-  };
+  zoomLevel = 1;
+  viewBox = { x: 0, y: 0, width: MAP_WIDTH_M * SCALE, height: MAP_HEIGHT_M * SCALE };
   updateViewBox();
 }
 
+function updateViewBox() {
+  const centerX = viewBox.x + viewBox.width / 2;
+  const centerY = viewBox.y + viewBox.height / 2;
+  const newWidth = (MAP_WIDTH_M * SCALE) / zoomLevel;
+  const newHeight = (MAP_HEIGHT_M * SCALE) / zoomLevel;
+  
+  // Limit zoom so we can't zoom out beyond full map
+  if (newWidth > MAP_WIDTH_M * SCALE) {
+    zoomLevel = 1;
+    viewBox.x = 0;
+    viewBox.y = 0;
+    viewBox.width = MAP_WIDTH_M * SCALE;
+    viewBox.height = MAP_HEIGHT_M * SCALE;
+  } else {
+    viewBox.x = centerX - newWidth / 2;
+    viewBox.y = centerY - newHeight / 2;
+    viewBox.width = newWidth;
+    viewBox.height = newHeight;
+    
+    // Constrain view within map bounds
+    const maxX = MAP_WIDTH_M * SCALE - viewBox.width;
+    const maxY = MAP_HEIGHT_M * SCALE - viewBox.height;
+    viewBox.x = Math.max(0, Math.min(viewBox.x, maxX));
+    viewBox.y = Math.max(0, Math.min(viewBox.y, maxY));
+  }
+  
+  svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+}
+
+function screenToSvg(screenX, screenY) {
+  const rect = svg.getBoundingClientRect();
+  const x = viewBox.x + (screenX - rect.left) * (viewBox.width / rect.width);
+  const y = viewBox.y + (screenY - rect.top) * (viewBox.height / rect.height);
+  return { x: x / SCALE, y: y / SCALE };
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  selectedObject = null;
+  clearSelection();
+}
 
 function drawGrid() {
   for (let x = 0; x <= MAP_WIDTH_M; x++) {
@@ -106,7 +85,7 @@ function drawGrid() {
     line.setAttribute("y1", 0);
     line.setAttribute("x2", x * SCALE);
     line.setAttribute("y2", MAP_HEIGHT_M * SCALE);
-    line.setAttribute("stroke", "#ddd");
+    line.setAttribute("stroke", "#eee");
     svg.appendChild(line);
   }
 
@@ -116,11 +95,10 @@ function drawGrid() {
     line.setAttribute("y1", y * SCALE);
     line.setAttribute("x2", MAP_WIDTH_M * SCALE);
     line.setAttribute("y2", y * SCALE);
-    line.setAttribute("stroke", "#ddd");
+    line.setAttribute("stroke", "#eee");
     svg.appendChild(line);
   }
 }
-
 
 function loadCompat() {
   return fetch("/api/compat")
@@ -129,7 +107,6 @@ function loadCompat() {
       compatPairs = data;
     });
 }
-
 
 function loadObjects() {
   return fetch(`/api/maps/${MAP_ID}/objects`)
@@ -141,115 +118,134 @@ function loadObjects() {
     });
 }
 
-
 function drawObject(obj) {
-  let el = null;
-
   if (obj.shape === "circle") {
-    el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    el.setAttribute("cx", obj.x * SCALE);
-    el.setAttribute("cy", obj.y * SCALE);
-    el.setAttribute("r", obj.size * SCALE);
+    const circle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+
+    circle.setAttribute("cx", obj.x * SCALE);
+    circle.setAttribute("cy", obj.y * SCALE);
+    circle.setAttribute("r", obj.size * SCALE);
+    circle.setAttribute("fill", obj.color || "#4caf50");
+    circle.dataset.id = obj.id;
+
+    circle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleObjectClick(obj, circle);
+    });
+
+    svg.appendChild(circle);
   }
 
   if (obj.shape === "rect") {
-    el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    el.setAttribute("x", obj.x * SCALE);
-    el.setAttribute("y", obj.y * SCALE);
-    el.setAttribute("width", obj.width * SCALE);
-    el.setAttribute("height", obj.height * SCALE);
+    const rect = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "rect"
+    );
+
+    rect.setAttribute("x", obj.x * SCALE);
+    rect.setAttribute("y", obj.y * SCALE);
+    rect.setAttribute("width", obj.width * SCALE);
+    rect.setAttribute("height", obj.height * SCALE);
+    rect.setAttribute("fill", obj.color || "#9e9e9e");
+    rect.setAttribute("opacity", 0.8);
+
+    rect.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleObjectClick(obj, rect);
+    });
+
+    svg.appendChild(rect);
   }
 
   if (obj.shape === "polygon") {
-    el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    const poly = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "polygon"
+    );
+
     const points = (obj.points || [])
       .map(p => `${p[0] * SCALE},${p[1] * SCALE}`)
       .join(" ");
-    el.setAttribute("points", points);
+
+    poly.setAttribute("points", points);
+    poly.setAttribute("fill", obj.color || "#ffcc00");
+    poly.setAttribute("opacity", 0.4);
+
+    poly.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleObjectClick(obj, poly);
+    });
+
+    svg.appendChild(poly);
   }
-
-  if (!el) return;
-
-  el.setAttribute("fill", obj.color || "#4caf50");
-  el.setAttribute("opacity", obj.shape === "polygon" ? 0.4 : 0.8);
-
-  el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    handleObjectClick(obj, el);
-  });
-
-  svg.appendChild(el);
 }
 
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (e.deltaY < 0) {
+    zoomIn();
+  } else {
+    zoomOut();
+  }
+});
+
+svg.addEventListener("mousedown", (e) => {
+  if (currentMode === "select" && e.button === 0) {
+    isPanning = true;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+  }
+});
+
+svg.addEventListener("mousemove", (e) => {
+  if (!isPanning) return;
+  
+  const rect = svg.getBoundingClientRect();
+  const dx = (e.clientX - lastMousePos.x) * (viewBox.width / rect.width);
+  const dy = (e.clientY - lastMousePos.y) * (viewBox.height / rect.height);
+  
+  viewBox.x -= dx;
+  viewBox.y -= dy;
+  
+  // Keep view within map boundaries (0 to MAP_WIDTH_M*SCALE)
+  const maxX = MAP_WIDTH_M * SCALE - viewBox.width;
+  const maxY = MAP_HEIGHT_M * SCALE - viewBox.height;
+  viewBox.x = Math.max(0, Math.min(viewBox.x, maxX));
+  viewBox.y = Math.max(0, Math.min(viewBox.y, maxY));
+  
+  svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  lastMousePos = { x: e.clientX, y: e.clientY };
+});
+
+svg.addEventListener("mouseup", () => {
+  isPanning = false;
+});
+
+svg.addEventListener("mouseleave", () => {
+  isPanning = false;
+});
 
 svg.addEventListener("click", (e) => {
   if (currentMode !== "create") return;
+  if (isPanning) return;
 
-  const rect = svg.getBoundingClientRect();
-  let x = (e.clientX - rect.left) / SCALE;
-  let y = (e.clientY - rect.top) / SCALE;
-
-  x = snapValue(x);
-  y = snapValue(y);
-
-  x = parseFloat(x.toFixed(2));
-  y = parseFloat(y.toFixed(2));
+  const coords = screenToSvg(e.clientX, e.clientY);
+  const x = snapValue(coords.x);
+  const y = snapValue(coords.y);
 
   const shape = document.getElementById("obj-shape").value;
 
   if (shape === "polygon") {
-    if (polygonPoints.length > 0) {
-      const last = polygonPoints[polygonPoints.length - 1];
-      drawTempLine(last[0], last[1], x, y);
-    }
-    polygonPoints.push([x, y]);
+    polygonPoints.push([parseFloat(x), parseFloat(y)]);
     drawTempPoint(x, y);
     return;
   }
 
-  createObject(getCurrentObjectData(x, y));
+  const obj = getCurrentObjectData(parseFloat(x), parseFloat(y));
+  createObject(obj);
 });
-
-function finishPolygon() {
-  if (polygonPoints.length < 3) {
-    alert("Минимум 3 точки");
-    return;
-  }
-
-  createObject({
-    type: "zone",
-    shape: "polygon",
-    points: polygonPoints,
-    color: document.getElementById("obj-color").value
-  });
-
-  polygonPoints = [];
-  tempLines.forEach(l => l.remove());
-  tempLines = [];
-}
-
-
-function drawTempPoint(x, y) {
-  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  c.setAttribute("cx", x * SCALE);
-  c.setAttribute("cy", y * SCALE);
-  c.setAttribute("r", 3);
-  c.setAttribute("fill", "red");
-  svg.appendChild(c);
-}
-
-function drawTempLine(x1, y1, x2, y2) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", x1 * SCALE);
-  line.setAttribute("y1", y1 * SCALE);
-  line.setAttribute("x2", x2 * SCALE);
-  line.setAttribute("y2", y2 * SCALE);
-  line.setAttribute("stroke", "#888");
-  line.setAttribute("stroke-dasharray", "4");
-  svg.appendChild(line);
-  tempLines.push(line);
-}
-
 
 function getCurrentObjectData(x, y) {
   const shape = document.getElementById("obj-shape").value;
@@ -288,6 +284,7 @@ function handleObjectClick(obj, element) {
     removeObject(obj.id, element);
     return;
   }
+
   if (currentMode === "select") {
     selectObject(obj, element);
   }
@@ -298,36 +295,48 @@ function selectObject(obj, element) {
   selectedObject = obj;
   selectedElement = element;
 
-  element.setAttribute("stroke", "#000");
+  element.setAttribute("stroke", "#111");
   element.setAttribute("stroke-width", "2");
 
-  let info = `
-    <b>${obj.name || "Object"}</b><br>
-    Тип: ${obj.type}<br>
-    Форма: ${obj.shape}<br>
+  const info = document.getElementById("object-info");
+  const plantBlock = obj.plant_name
+    ? `Plant: <strong>${obj.plant_name}</strong><br>
+       Bed: ${obj.bed_type || "-"}<br>
+       Planted: ${obj.planted_at || "-"}<br>
+       Water: ${obj.water_need || "-"} / Sun: ${obj.sun_need || "-"}<br>
+       Avg yield: ${obj.avg_yield || "-"} ${obj.yield_unit || ""}<br>`
+    : "";
+
+  info.innerHTML = `
+    <strong>${obj.name || "Object"}</strong><br>
+    Type: ${obj.type}<br>
+    Shape: ${obj.shape}<br>
+    X: ${obj.x} m, Y: ${obj.y} m<br>
+    ${plantBlock}
   `;
-
-  if (obj.shape === "polygon") {
-    info += `Точек: ${obj.points.length}<br>`;
-  } else {
-    info += `X: ${obj.x} м<br>Y: ${obj.y} м<br>`;
-  }
-
-  if (obj.plant_name) {
-    info += `
-      Растение: ${obj.plant_name}<br>
-      Посажено: ${obj.planted_at || "-"}<br>
-      Тип грядки: ${obj.bed_type || "-"}<br>
-    `;
-  }
-
-  document.getElementById("object-info").innerHTML = info;
 }
 
 function clearSelection() {
-  svg.querySelectorAll("[stroke]").forEach(el => el.removeAttribute("stroke"));
+  const all = svg.querySelectorAll("[stroke]");
+  all.forEach(el => el.removeAttribute("stroke"));
 }
 
+function finishPolygon() {
+  if (polygonPoints.length < 3) {
+    alert("Polygon needs at least 3 points");
+    return;
+  }
+
+  createObject({
+    type: "zone",
+    shape: "polygon",
+    points: polygonPoints,
+    color: document.getElementById("obj-color").value,
+    name: document.getElementById("obj-name").value || "Zone"
+  });
+
+  polygonPoints = [];
+}
 
 function createObject(obj) {
   fetch(`/api/maps/${MAP_ID}/objects`, {
@@ -338,78 +347,28 @@ function createObject(obj) {
 }
 
 function removeObject(id, element) {
-  fetch(`/api/objects/${id}`, { method: "DELETE" })
-    .then(() => element.remove());
+  fetch(`/api/objects/${id}`, {
+    method: "DELETE"
+  }).then(() => element.remove());
 }
 
-function getCenter(obj) {
-  if (obj.shape === "circle") {
-    return { x: obj.x, y: obj.y };
-  }
-  if (obj.shape === "rect") {
-    return {
-      x: obj.x + obj.width / 2,
-      y: obj.y + obj.height / 2
-    };
-  }
-  return null;
-}
-
-function renderConflicts() {
-  const list = document.getElementById("conflict-list");
-  if (!list) return;
-
-  list.innerHTML = "";
-
-  const plants = objects.filter(o => o.type === "plant" && o.plant_name);
-
-  for (let i = 0; i < plants.length; i++) {
-    for (let j = i + 1; j < plants.length; j++) {
-      const a = plants[i];
-      const b = plants[j];
-
-      const ca = getCenter(a);
-      const cb = getCenter(b);
-      if (!ca || !cb) continue;
-
-      const dist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
-      if (dist > 1) continue;
-
-      const pair = compatPairs.find(p =>
-        (p.plant_a === a.plant_name && p.plant_b === b.plant_name) ||
-        (p.plant_a === b.plant_name && p.plant_b === a.plant_name)
-      );
-
-      if (pair && pair.level !== "good") {
-        const li = document.createElement("li");
-        li.className = "conflict-item";
-        li.textContent = `${a.plant_name} + ${b.plant_name}: ${pair.note}`;
-        list.appendChild(li);
-      }
-    }
-  }
-
-  if (!list.children.length) {
-    const li = document.createElement("li");
-    li.className = "conflict-item";
-    li.textContent = "Нет опасных сочетаний";
-    list.appendChild(li);
-  }
+function drawTempPoint(x, y) {
+  const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("cx", x * SCALE);
+  c.setAttribute("cy", y * SCALE);
+  c.setAttribute("r", 3);
+  c.setAttribute("fill", "red");
+  svg.appendChild(c);
 }
 
 function logWatering() {
-  if (!selectedObject) {
-    alert("Выберите растение");
-    return;
-  }
-
   fetch("/api/logs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       map_id: MAP_ID,
       action_type: "watering",
-      plant_object_id: selectedObject.id
+      plant_object_id: selectedObject ? selectedObject.id : null
     })
   }).then(() => loadLogs());
 }
@@ -421,7 +380,7 @@ function openHarvest() {
 
 function submitHarvest() {
   if (!selectedObject) {
-    alert("Выберите растение");
+    alert("Select a plant first");
     return;
   }
 
@@ -453,8 +412,6 @@ function loadLogs() {
     .then(r => r.json())
     .then(data => {
       const list = document.getElementById("log-list");
-      if (!list) return;
-
       list.innerHTML = "";
       data.forEach(item => {
         const div = document.createElement("div");
@@ -466,11 +423,70 @@ function loadLogs() {
     });
 }
 
+function getCenter(obj) {
+  if (obj.shape === "circle") {
+    return { x: obj.x, y: obj.y };
+  }
+  if (obj.shape === "rect") {
+    return { x: obj.x + (obj.width / 2), y: obj.y + (obj.height / 2) };
+  }
+  return null;
+}
+
+function renderConflicts() {
+  const list = document.getElementById("conflict-list");
+  list.innerHTML = "";
+
+  const plants = objects.filter(o => o.type === "plant" && o.plant_name);
+  for (let i = 0; i < plants.length; i++) {
+    for (let j = i + 1; j < plants.length; j++) {
+      const a = plants[i];
+      const b = plants[j];
+      const ca = getCenter(a);
+      const cb = getCenter(b);
+      if (!ca || !cb) continue;
+
+      const dist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
+      if (dist > 0.8) continue;
+
+      const pair = compatPairs.find(p =>
+        (p.plant_a === a.plant_name && p.plant_b === b.plant_name) ||
+        (p.plant_a === b.plant_name && p.plant_b === a.plant_name)
+      );
+
+      if (pair && pair.level !== "good") {
+        const item = document.createElement("li");
+        item.className = "conflict-item";
+        item.innerText = `${a.plant_name} + ${b.plant_name}: ${pair.note}`;
+        list.appendChild(item);
+      }
+    }
+  }
+
+  if (list.children.length === 0) {
+    const item = document.createElement("li");
+    item.className = "conflict-item";
+    item.innerText = "No risky combinations nearby.";
+    list.appendChild(item);
+  }
+}
+
 function boot() {
+  viewBox = { x: 0, y: 0, width: MAP_WIDTH_M * SCALE, height: MAP_HEIGHT_M * SCALE };
+  svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
   drawGrid();
   Promise.all([loadCompat(), loadObjects()]).then(() => {
     loadLogs();
   });
 }
+
+document.getElementById("obj-color").addEventListener("change", (e) => {
+  document.getElementById("color-value").textContent = e.target.value.toUpperCase();
+});
+
+document.getElementById("obj-color").addEventListener("input", (e) => {
+  document.getElementById("color-value").textContent = e.target.value.toUpperCase();
+});
 
 boot();

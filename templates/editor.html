@@ -33,18 +33,18 @@
         </select>
       </div>
       <div class="form-row">
-        <label>Snap to grid</label>
-        <input type="checkbox" id="snap-enabled" checked>
+        <label>
+          <input type="checkbox" id="snap-enabled"> Snap to grid
+        </label>
       </div>
-
       <div class="form-row">
         <label>Grid step (m)</label>
         <select id="snap-step">
-          <option value="1">1 m</option>
-          <option value="0.5" selected>0.5 m</option>
-          <option value="0.25">0.25 m</option>
-          <option value="0.1">0.1 m</option>
-          <option value="0.05">0.05 m</option>
+          <option value="1">1m</option>
+          <option value="0.5">0.5m</option>
+          <option value="0.25">0.25m</option>
+          <option value="0.1">0.1m</option>
+          <option value="0.05" selected>0.05m</option>
         </select>
       </div>
       <div class="form-row">
@@ -85,7 +85,15 @@
       </div>
       <div class="form-row">
         <label>Color</label>
-        <input id="obj-color" type="color" value="#4CAF50">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="obj-color" type="color" value="#4CAF50" style="width:60px; height:40px; cursor:pointer;">
+          <span id="color-value" style="font-size:12px; font-family:monospace;">#4CAF50</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <button class="button ghost" onclick="zoomIn()" title="Zoom in (Scroll up)">🔍+</button>
+        <button class="button ghost" onclick="zoomOut()" title="Zoom out (Scroll down)">🔍−</button>
+        <button class="button ghost" onclick="resetView()" title="Reset view">⟲ Reset</button>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="button" onclick="setMode('create')">Create mode</button>
