@@ -1,0 +1,216 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R] /Count 6 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 256 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(GrowMap) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(Personal assistant for planning and analyzing plantings) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Garden and balcony focus) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Interactive maps, weather advice, analytics) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 267 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(Problem and goal) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(Keep track of plantings and care in one place) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Avoid mistakes with weather-based advice) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Analyze watering and harvest efficiency) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 415 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(Level 1 (mandatory)) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(Auth: register/login, private maps and plants) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Interactive 2D map \(SVG\) with object info) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Plant catalog with requirements) Tj
+ET
+BT
+/F1 20 Tf
+50 394 Td
+(Weather API recommendations \(not raw data\)) Tj
+ET
+BT
+/F1 20 Tf
+50 362 Td
+(Single analytics page \(charts + summary\)) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 267 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(Level 2 (bonus)) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(Plant compatibility warnings when nearby) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Harvest logging with efficiency vs average) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Action history: watering, planting, harvest) Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 251 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(Level 3 (optional)) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(LLM explanations only \(no calculations\)) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Not used in current implementation) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Rule-based insights are primary) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 100 0 R >> >> /Contents 14 0 R >>
+endobj
+14 0 obj
+<< /Length 318 >>
+stream
+BT
+/F1 36 Tf
+50 540 Td
+(Tech and demo flow) Tj
+ET
+BT
+/F1 20 Tf
+50 490 Td
+(Flask + SQLite + SVG + Chart.js) Tj
+ET
+BT
+/F1 20 Tf
+50 458 Td
+(Create map -> add plants -> log actions) Tj
+ET
+BT
+/F1 20 Tf
+50 426 Td
+(Weather advice -> analytics charts) Tj
+ET
+BT
+/F1 20 Tf
+50 394 Td
+(Result: clear plan and accountability) Tj
+ET
+endstream
+endobj
+100 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000147 00000 n 
+0000000275 00000 n 
+0000000582 00000 n 
+0000000710 00000 n 
+0000001028 00000 n 
+0000001156 00000 n 
+0000001622 00000 n 
+0000001751 00000 n 
+0000002070 00000 n 
+0000002200 00000 n 
+0000002503 00000 n 
+0000002633 00000 n 
+0000003003 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+3075
+%%EOF

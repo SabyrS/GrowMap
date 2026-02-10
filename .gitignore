@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.env/
+
+# Local databases and instance data
+instance/
+*.db
+*.sqlite
+
+# Editor
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<head>
+  <title>GrowMap – Map</title>
+  <style>
+    canvas {
+      border: 2px solid #444;
+      background: #f5f5f5;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🗺 Моя карта</h2>
+
+<button onclick="addPlant()">➕ Добавить растение</button>
+<br><br>
+
+<canvas id="map" width="600" height="400"></canvas>
+
+<script src="/static/map.js"></script>
+</body>
+{% endblock %}

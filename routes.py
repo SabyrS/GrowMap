@@ -1,0 +1,512 @@
+import json
+from datetime import datetime, timedelta
+from urllib.request import urlopen
+
+from flask import jsonify, request, session, redirect, render_template
+
+from app import app
+from db import get_db
+
+
+DEFAULT_LAT = 51.1801
+DEFAULT_LON = 71.446
+
+
+def _require_login():
+    if "user_id" not in session:
+        return False
+    return True
+
+
+def _get_map_or_404(map_id):
+    conn = get_db()
+    map_data = conn.execute(
+        "SELECT * FROM maps WHERE id=? AND user_id=?",
+        (map_id, session["user_id"])
+    ).fetchone()
+    conn.close()
+    return map_data
+
+
+def _get_weather(lat, lon):
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
+        "&current_weather=true&timezone=auto"
+    )
+    with urlopen(url) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    daily = data.get("daily", {})
+    days = daily.get("time", [])
+    tmax = daily.get("temperature_2m_max", [])
+    tmin = daily.get("temperature_2m_min", [])
+    rain = daily.get("precipitation_sum", [])
+
+    forecast = []
+    for i, day in enumerate(days):
+        forecast.append({
+            "date": day,
+            "tmax": tmax[i],
+            "tmin": tmin[i],
+            "rain": rain[i]
+        })
+
+    current = data.get("current_weather", {})
+    return current, forecast
+
+
+def _make_weather_recommendation(forecast):
+    if not forecast:
+        return "No forecast data", []
+
+    today = forecast[0]
+    warnings = []
+    if today["tmin"] <= 2:
+        warnings.append("Frost risk tonight")
+    if today["tmax"] >= 30:
+        warnings.append("Heat stress risk")
+
+    if today["rain"] >= 5:
+        rec = "No watering today"
+    elif today["tmax"] >= 28 and today["rain"] < 1:
+        rec = "Watering recommended"
+    else:
+        rec = "Light watering if soil is dry"
+
+    return rec, warnings
+
+
+def _log_action(conn, map_id, action_type, plant_object_id=None, amount=None, note=None):
+    conn.execute(
+        """
+        INSERT INTO logs (user_id, map_id, action_type, plant_object_id, amount, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session["user_id"],
+            map_id,
+            action_type,
+            plant_object_id,
+            amount,
+            note,
+            datetime.utcnow().isoformat()
+        )
+    )
+
+
+@app.route("/")
+def home():
+    if not _require_login():
+        return redirect("/login")
+    return render_template("home.html")
+
+
+@app.route("/maps")
+def maps_page():
+    if not _require_login():
+        return redirect("/login")
+
+    conn = get_db()
+    maps = conn.execute(
+        "SELECT * FROM maps WHERE user_id=?",
+        (session["user_id"],)
+    ).fetchall()
+    conn.close()
+
+    return render_template("maps.html", maps=maps)
+
+
+@app.route("/maps/create", methods=["GET", "POST"])
+def create_map():
+    if not _require_login():
+        return redirect("/login")
+
+    if request.method == "POST":
+        name = request.form["name"]
+        width = float(request.form["width"])
+        height = float(request.form["height"])
+
+        conn = get_db()
+        conn.execute(
+            """
+            INSERT INTO maps (user_id, name, width_m, height_m)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session["user_id"], name, width, height)
+        )
+        conn.commit()
+        conn.close()
+
+        return redirect("/maps")
+
+    return render_template("create_map.html")
+
+
+@app.route("/editor/<int:map_id>")
+def editor(map_id):
+    if not _require_login():
+        return redirect("/login")
+
+    map_data = _get_map_or_404(map_id)
+    if not map_data:
+        return "Map not found", 404
+
+    conn = get_db()
+    plants = conn.execute(
+        "SELECT * FROM plant_catalog ORDER BY name"
+    ).fetchall()
+    conn.close()
+
+    return render_template("editor.html", map=map_data, plants=plants)
+
+
+@app.route("/api/catalog")
+def catalog():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM plant_catalog ORDER BY name").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/compat")
+def compat():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM plant_compat").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/maps/<int:map_id>/objects")
+def get_objects(map_id):
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    if not _get_map_or_404(map_id):
+        return jsonify({"error": "not_found"}), 404
+
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT mo.*, pc.name AS plant_name, pc.avg_yield, pc.yield_unit,
+               pc.water_need, pc.sun_need, pc.frost_sensitive, pc.heat_sensitive
+        FROM map_objects mo
+        LEFT JOIN plant_catalog pc ON pc.id = mo.plant_id
+        WHERE mo.map_id=?
+        """,
+        (map_id,)
+    ).fetchall()
+    conn.close()
+
+    objects = []
+    for r in rows:
+        obj = dict(r)
+        if obj.get("points"):
+            obj["points"] = json.loads(obj["points"])
+        objects.append(obj)
+
+    return jsonify(objects)
+
+
+@app.route("/api/maps/<int:map_id>/objects", methods=["POST"])
+def add_object(map_id):
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    if not _get_map_or_404(map_id):
+        return jsonify({"error": "not_found"}), 404
+
+    data = request.json
+    conn = get_db()
+
+    plant_id = data.get("plant_id")
+    bed_type = data.get("bed_type")
+    planted_at = data.get("planted_at")
+
+    new_id = None
+    if data["shape"] == "polygon":
+        cur = conn.execute(
+            """
+            INSERT INTO map_objects
+            (map_id, type, shape, points, color, name, plant_id, planted_at, bed_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                map_id,
+                data["type"],
+                data["shape"],
+                json.dumps(data["points"]),
+                data.get("color", "#ffcc00"),
+                data.get("name"),
+                plant_id,
+                planted_at,
+                bed_type
+            )
+        )
+        new_id = cur.lastrowid
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO map_objects
+            (map_id, type, shape, x, y, size, width, height, color, name, plant_id, planted_at, bed_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                map_id,
+                data["type"],
+                data["shape"],
+                data.get("x"),
+                data.get("y"),
+                data.get("size"),
+                data.get("width"),
+                data.get("height"),
+                data.get("color"),
+                data.get("name"),
+                plant_id,
+                planted_at,
+                bed_type
+            )
+        )
+        new_id = cur.lastrowid
+
+    if data.get("type") == "plant":
+        plant_row = conn.execute(
+            "SELECT name FROM plant_catalog WHERE id=?",
+            (plant_id,)
+        ).fetchone()
+        plant_name = plant_row["name"] if plant_row else "Plant"
+        _log_action(conn, map_id, "planting", new_id, None, plant_name)
+
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/objects/<int:obj_id>", methods=["DELETE"])
+def delete_object(obj_id):
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT mo.id
+        FROM map_objects mo
+        JOIN maps m ON m.id = mo.map_id
+        WHERE mo.id=? AND m.user_id=?
+        """,
+        (obj_id, session["user_id"])
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "not_found"}), 404
+
+    conn.execute("DELETE FROM map_objects WHERE id=?", (obj_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/logs", methods=["GET", "POST"])
+def logs():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    if request.method == "POST":
+        data = request.json
+        if not _get_map_or_404(data["map_id"]):
+            return jsonify({"error": "not_found"}), 404
+        conn = get_db()
+        _log_action(
+            conn,
+            data["map_id"],
+            data["action_type"],
+            data.get("plant_object_id"),
+            data.get("amount"),
+            data.get("note")
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+
+    map_id = request.args.get("map_id")
+    conn = get_db()
+    if map_id:
+        if not _get_map_or_404(map_id):
+            conn.close()
+            return jsonify({"error": "not_found"}), 404
+        rows = conn.execute(
+            """
+            SELECT * FROM logs
+            WHERE user_id=? AND map_id=?
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            (session["user_id"], map_id)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT * FROM logs
+            WHERE user_id=?
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            (session["user_id"],)
+        ).fetchall()
+    conn.close()
+
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/harvest", methods=["POST"])
+def add_harvest():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.json
+    if not _get_map_or_404(data["map_id"]):
+        return jsonify({"error": "not_found"}), 404
+    conn = get_db()
+
+    row = conn.execute(
+        """
+        SELECT mo.id
+        FROM map_objects mo
+        JOIN maps m ON m.id = mo.map_id
+        WHERE mo.id=? AND m.user_id=?
+        """,
+        (data["plant_object_id"], session["user_id"])
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "not_found"}), 404
+
+    conn.execute(
+        """
+        INSERT INTO harvests (user_id, map_id, plant_object_id, amount, unit, harvested_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session["user_id"],
+            data["map_id"],
+            data["plant_object_id"],
+            data["amount"],
+            data["unit"],
+            data.get("harvested_at", datetime.utcnow().date().isoformat())
+        )
+    )
+
+    _log_action(
+        conn,
+        data["map_id"],
+        "harvest",
+        data["plant_object_id"],
+        data["amount"],
+        data.get("note")
+    )
+
+    avg_row = conn.execute(
+        """
+        SELECT pc.avg_yield, pc.yield_unit
+        FROM map_objects mo
+        LEFT JOIN plant_catalog pc ON pc.id = mo.plant_id
+        WHERE mo.id=?
+        """,
+        (data["plant_object_id"],)
+    ).fetchone()
+
+    conn.commit()
+    conn.close()
+
+    efficiency = None
+    if avg_row and avg_row["avg_yield"]:
+        efficiency = round((data["amount"] / avg_row["avg_yield"]) * 100, 1)
+
+    return jsonify({
+        "status": "ok",
+        "avg_yield": avg_row["avg_yield"] if avg_row else None,
+        "yield_unit": avg_row["yield_unit"] if avg_row else None,
+        "efficiency": efficiency
+    })
+
+
+@app.route("/weather", methods=["GET", "POST"])
+def weather_page():
+    if not _require_login():
+        return redirect("/login")
+
+    if request.method == "POST":
+        session["lat"] = float(request.form["lat"])
+        session["lon"] = float(request.form["lon"])
+
+    lat = session.get("lat", DEFAULT_LAT)
+    lon = session.get("lon", DEFAULT_LON)
+
+    current, forecast = _get_weather(lat, lon)
+    recommendation, warnings = _make_weather_recommendation(forecast)
+
+    weather = {
+        "temp": current.get("temperature"),
+        "wind": current.get("windspeed"),
+        "recommendation": recommendation,
+        "warnings": warnings,
+        "forecast": forecast
+    }
+
+    return render_template("weather.html", weather=weather, lat=lat, lon=lon)
+
+
+@app.route("/analytics")
+def analytics_page():
+    if not _require_login():
+        return redirect("/login")
+
+    lat = session.get("lat", DEFAULT_LAT)
+    lon = session.get("lon", DEFAULT_LON)
+    _, forecast = _get_weather(lat, lon)
+
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT action_type, created_at
+        FROM logs
+        WHERE user_id=?
+        """,
+        (session["user_id"],)
+    ).fetchall()
+    conn.close()
+
+    today = datetime.utcnow().date()
+    days = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
+    labels = [d.isoformat() for d in days]
+
+    watering_counts = {d.isoformat(): 0 for d in days}
+    for r in rows:
+        if r["action_type"] != "watering":
+            continue
+        day = r["created_at"][:10]
+        if day in watering_counts:
+            watering_counts[day] += 1
+
+    temp_series = [{
+        "date": f["date"],
+        "tmax": f["tmax"],
+        "tmin": f["tmin"]
+    } for f in forecast[:7]]
+
+    analytics = {
+        "labels": labels,
+        "watering": [watering_counts[d] for d in labels],
+        "temp": temp_series
+    }
+
+    summary = "Watering is balanced this week."
+    if sum(analytics["watering"]) >= 6:
+        summary = "High watering frequency. Consider soil moisture."
+    if sum(analytics["watering"]) == 0:
+        summary = "No watering events recorded."
+
+    return render_template("analytics.html", analytics=analytics, summary=summary)

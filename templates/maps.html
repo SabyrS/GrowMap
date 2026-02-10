@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid two">
+  <div class="card">
+    <h2 class="section-title">My maps</h2>
+    {% if maps|length == 0 %}
+      <p>You don't have maps yet.</p>
+    {% endif %}
+    <div class="grid">
+      {% for map in maps %}
+        <a class="card soft" href="/editor/{{ map.id }}">
+          <strong>{{ map.name }}</strong><br>
+          <span class="badge">{{ map.width_m }} × {{ map.height_m }} m</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card soft">
+    <h2 class="section-title">Create a new map</h2>
+    <p>Set your plot or balcony size to start planning.</p>
+    <a class="button" href="/maps/create">New map</a>
+  </div>
+</div>
+{% endblock %}

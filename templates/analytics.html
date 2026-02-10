@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid two">
+  <div class="card">
+    <h2 class="section-title">Temperature trend</h2>
+    <div class="chart-wrap">
+      <canvas id="tempChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="section-title">Watering activity</h2>
+    <div class="chart-wrap">
+      <canvas id="waterChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="card soft" style="margin-top:20px;">
+  <h3 class="section-title">Summary</h3>
+  <p>{{ summary }}</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const analytics = {{ analytics | tojson }};
+
+  const tempLabels = analytics.temp.map(t => t.date);
+  const tempMax = analytics.temp.map(t => t.tmax);
+  const tempMin = analytics.temp.map(t => t.tmin);
+
+  new Chart(document.getElementById("tempChart"), {
+    type: "line",
+    data: {
+      labels: tempLabels,
+      datasets: [
+        { label: "Max", data: tempMax, borderColor: "#2f6b3c", tension: 0.35 },
+        { label: "Min", data: tempMin, borderColor: "#d8893b", tension: 0.35 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  new Chart(document.getElementById("waterChart"), {
+    type: "bar",
+    data: {
+      labels: analytics.labels,
+      datasets: [{
+        label: "Waterings",
+        data: analytics.watering,
+        backgroundColor: "rgba(47,107,60,0.6)"
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+</script>
+{% endblock %}

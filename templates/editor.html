@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="section-title">{{ map.name }}</h2>
+  <p class="badge">{{ map.width_m }} × {{ map.height_m }} m</p>
+</div>
+
+<div class="editor-layout">
+  <div class="editor-canvas">
+    <svg id="editor"
+         width="{{ map.width_m * 40 }}"
+         height="{{ map.height_m * 40 }}"
+         style="border:1px solid #333; background:white"></svg>
+  </div>
+
+  <aside class="info-panel">
+    <div class="card">
+      <h3 class="section-title">Create object</h3>
+      <div class="form-row">
+        <label>Type</label>
+        <select id="obj-type">
+          <option value="plant">Plant</option>
+          <option value="building">Building</option>
+          <option value="zone">Zone</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Shape</label>
+        <select id="obj-shape">
+          <option value="circle">Circle</option>
+          <option value="rect">Rectangle</option>
+          <option value="polygon">Polygon</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Name</label>
+        <input id="obj-name" placeholder="Name">
+      </div>
+      <div class="form-row">
+        <label>Plant catalog</label>
+        <select id="plant-id">
+          <option value="">Select plant</option>
+          {% for plant in plants %}
+            <option value="{{ plant.id }}">{{ plant.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Bed type</label>
+        <select id="bed-type">
+          <option value="bed">Garden bed</option>
+          <option value="pot">Pot</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Planting date</label>
+        <input id="planted-at" type="date">
+      </div>
+      <div class="form-row">
+        <label>Size (m)</label>
+        <input id="obj-size" type="number" step="0.1" value="0.3">
+      </div>
+      <div class="form-row">
+        <label>Width (m)</label>
+        <input id="obj-width" type="number" step="0.1" placeholder="Width">
+      </div>
+      <div class="form-row">
+        <label>Height (m)</label>
+        <input id="obj-height" type="number" step="0.1" placeholder="Height">
+      </div>
+      <div class="form-row">
+        <label>Color</label>
+        <input id="obj-color" type="color" value="#4CAF50">
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="button" onclick="setMode('create')">Create mode</button>
+        <button class="button ghost" onclick="setMode('select')">Select mode</button>
+        <button class="button ghost" onclick="setMode('delete')">Delete mode</button>
+        <button class="button secondary" onclick="finishPolygon()">Finish polygon</button>
+      </div>
+    </div>
+
+    <div class="card soft">
+      <h3 class="section-title">Selected object</h3>
+      <div id="object-info">Click an object to see details.</div>
+      <div style="margin-top:12px; display:grid; gap:8px;">
+        <button class="button ghost" onclick="logWatering()">Log watering</button>
+        <button class="button ghost" onclick="openHarvest()">Log harvest</button>
+      </div>
+      <div id="harvest-form" style="margin-top:12px; display:none;">
+        <div class="form-row">
+          <label>Harvest amount</label>
+          <input id="harvest-amount" type="number" step="0.1" placeholder="Amount">
+        </div>
+        <div class="form-row">
+          <label>Unit</label>
+          <input id="harvest-unit" value="kg">
+        </div>
+        <button class="button" onclick="submitHarvest()">Save harvest</button>
+      </div>
+      <div id="harvest-result" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Compatibility warnings</h3>
+      <ul id="conflict-list" class="conflict-list"></ul>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Activity log</h3>
+      <div id="log-list" class="log-list"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const MAP_ID = {{ map.id }};
+  const MAP_WIDTH_M = {{ map.width_m }};
+  const MAP_HEIGHT_M = {{ map.height_m }};
+  const SCALE = 40;
+</script>
+
+<script src="{{ url_for('static', filename='editor.js') }}"></script>
+{% endblock %}

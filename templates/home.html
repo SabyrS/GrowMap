@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div class="card">
+    <div class="badge">Personal garden assistant</div>
+    <h1>Plan plantings. Track care. Grow smarter.</h1>
+    <p>
+      GrowMap keeps your garden or balcony organized: interactive maps,
+      plant requirements, weather-based tips, and analytics in one place.
+    </p>
+    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+      <a class="button" href="/maps">Open my maps</a>
+      <a class="button ghost" href="/weather">Check weather plan</a>
+    </div>
+  </div>
+  <div class="card soft">
+    <h2 class="section-title">Quick actions</h2>
+    <div class="grid">
+      <a class="button secondary" href="/maps/create">Create new map</a>
+      <a class="button ghost" href="/analytics">View analytics</a>
+      <a class="button ghost" href="/weather">Watering advice</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
