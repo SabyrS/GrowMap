@@ -33,6 +33,21 @@
         </select>
       </div>
       <div class="form-row">
+        <label>Snap to grid</label>
+        <input type="checkbox" id="snap-enabled" checked>
+      </div>
+
+      <div class="form-row">
+        <label>Grid step (m)</label>
+        <select id="snap-step">
+          <option value="1">1 m</option>
+          <option value="0.5" selected>0.5 m</option>
+          <option value="0.25">0.25 m</option>
+          <option value="0.1">0.1 m</option>
+          <option value="0.05">0.05 m</option>
+        </select>
+      </div>
+      <div class="form-row">
         <label>Name</label>
         <input id="obj-name" placeholder="Name">
       </div>
