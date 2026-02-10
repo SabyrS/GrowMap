@@ -144,6 +144,33 @@ def create_map():
     return render_template("create_map.html")
 
 
+@app.route("/api/maps/<int:map_id>", methods=["DELETE"])
+def delete_map(map_id):
+    if not _require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    map_data = _get_map_or_404(map_id)
+    if not map_data:
+        return jsonify({"error": "Map not found"}), 404
+
+    conn = get_db()
+    # Delete all objects in the map first
+    conn.execute("DELETE FROM map_objects WHERE map_id=?", (map_id,))
+    # Delete all logs for this map
+    conn.execute("DELETE FROM logs WHERE map_id=?", (map_id,))
+    # Delete all harvests for objects in this map
+    conn.execute("""
+        DELETE FROM harvests 
+        WHERE plant_object_id IN (SELECT id FROM map_objects WHERE map_id=?)
+    """, (map_id,))
+    # Delete the map
+    conn.execute("DELETE FROM maps WHERE id=?", (map_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True})
+
+
 @app.route("/editor/<int:map_id>")
 def editor(map_id):
     if not _require_login():

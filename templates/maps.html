@@ -8,10 +8,13 @@
     {% endif %}
     <div class="grid">
       {% for map in maps %}
-        <a class="card soft" href="/editor/{{ map.id }}">
-          <strong>{{ map.name }}</strong><br>
-          <span class="badge">{{ map.width_m }} × {{ map.height_m }} m</span>
-        </a>
+        <div class="map-item" data-map-id="{{ map.id }}">
+          <a class="card soft" href="/editor/{{ map.id }}">
+            <strong>{{ map.name }}</strong><br>
+            <span class="badge">{{ map.width_m }} × {{ map.height_m }} m</span>
+          </a>
+          <button class="button ghost danger" onclick="deleteMap({{ map.id }})" title="Delete map">Delete</button>
+        </div>
       {% endfor %}
     </div>
   </div>
@@ -21,4 +24,60 @@
     <a class="button" href="/maps/create">New map</a>
   </div>
 </div>
+
+<style>
+  .map-item {
+    position: relative;
+  }
+  
+  .map-item .card {
+    display: block;
+    margin-bottom: 8px;
+  }
+  
+  .map-item .button {
+    width: 100%;
+    margin-top: 0;
+  }
+  
+  .button.danger {
+    background-color: #d32f2f;
+    color: white;
+  }
+  
+  .button.danger:hover {
+    background-color: #b71c1c;
+  }
+</style>
+
+<script>
+  function deleteMap(mapId) {
+    if (!confirm("Are you sure you want to delete this map? This cannot be undone.")) {
+      return;
+    }
+    
+    fetch(`/api/maps/${mapId}`, {
+      method: "DELETE"
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const mapItem = document.querySelector(`[data-map-id="${mapId}"]`);
+          if (mapItem) {
+            mapItem.style.opacity = "0.5";
+            setTimeout(() => {
+              mapItem.remove();
+              // Reload if all maps are deleted
+              if (document.querySelectorAll(".map-item").length === 0) {
+                location.reload();
+              }
+            }, 300);
+          }
+        }
+      })
+      .catch(err => {
+        alert("Error deleting map: " + err.message);
+      });
+  }
+</script>
 {% endblock %}
