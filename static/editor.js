@@ -1,17 +1,20 @@
 const svg = document.getElementById("editor");
 
-
 let currentMode = "create";
 let selectedObject = null;
+let selectedElement = null;
+
+let objects = [];
 
 let polygonPoints = [];
 let tempLines = [];
 
+
 function snapValue(v) {
-  const enabled = document.getElementById("snap-enabled").checked;
+  const enabled = document.getElementById("snap-enabled")?.checked;
   if (!enabled) return v;
 
-  const step = parseFloat(document.getElementById("snap-step").value);
+  const step = parseFloat(document.getElementById("snap-step")?.value || 0.5);
   return Math.round(v / step) * step;
 }
 
@@ -19,8 +22,10 @@ function snapValue(v) {
 function setMode(mode) {
   currentMode = mode;
   selectedObject = null;
+  selectedElement = null;
   clearSelection();
 }
+
 
 let viewBox = {
   x: 0,
@@ -40,38 +45,35 @@ updateViewBox();
 svg.addEventListener("wheel", (e) => {
   e.preventDefault();
   const zoom = e.deltaY > 0 ? 1.1 : 0.9;
-
   viewBox.w *= zoom;
   viewBox.h *= zoom;
-
   updateViewBox();
 });
 
 let isPanning = false;
-let start = {};
+let panStart = {};
 
 svg.addEventListener("mousedown", (e) => {
   if (currentMode !== "select") return;
   isPanning = true;
-  start = { x: e.clientX, y: e.clientY };
+  panStart = { x: e.clientX, y: e.clientY };
 });
 
 svg.addEventListener("mousemove", (e) => {
   if (!isPanning) return;
 
-  const dx = (start.x - e.clientX);
-  const dy = (start.y - e.clientY);
+  const dx = panStart.x - e.clientX;
+  const dy = panStart.y - e.clientY;
 
   viewBox.x += dx;
   viewBox.y += dy;
 
-  start = { x: e.clientX, y: e.clientY };
+  panStart = { x: e.clientX, y: e.clientY };
   updateViewBox();
 });
 
-svg.addEventListener("mouseup", () => isPanning = false);
-svg.addEventListener("mouseleave", () => isPanning = false);
-
+svg.addEventListener("mouseup", () => (isPanning = false));
+svg.addEventListener("mouseleave", () => (isPanning = false));
 
 function zoomIn() {
   viewBox.w *= 0.8;
@@ -96,109 +98,78 @@ function resetView() {
 }
 
 
+function drawGrid() {
+  for (let x = 0; x <= MAP_WIDTH_M; x++) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", x * SCALE);
+    line.setAttribute("y1", 0);
+    line.setAttribute("x2", x * SCALE);
+    line.setAttribute("y2", MAP_HEIGHT_M * SCALE);
+    line.setAttribute("stroke", "#ddd");
+    svg.appendChild(line);
+  }
 
-for (let x = 0; x <= MAP_WIDTH_M; x++) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", x * SCALE);
-  line.setAttribute("y1", 0);
-  line.setAttribute("x2", x * SCALE);
-  line.setAttribute("y2", MAP_HEIGHT_M * SCALE);
-  line.setAttribute("stroke", "#ddd");
-  svg.appendChild(line);
-}
-
-for (let y = 0; y <= MAP_HEIGHT_M; y++) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", 0);
-  line.setAttribute("y1", y * SCALE);
-  line.setAttribute("x2", MAP_WIDTH_M * SCALE);
-  line.setAttribute("y2", y * SCALE);
-  line.setAttribute("stroke", "#ddd");
-  svg.appendChild(line);
+  for (let y = 0; y <= MAP_HEIGHT_M; y++) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", 0);
+    line.setAttribute("y1", y * SCALE);
+    line.setAttribute("x2", MAP_WIDTH_M * SCALE);
+    line.setAttribute("y2", y * SCALE);
+    line.setAttribute("stroke", "#ddd");
+    svg.appendChild(line);
+  }
 }
 
 
 function loadObjects() {
   fetch(`/api/maps/${MAP_ID}/objects`)
     .then(r => r.json())
-    .then(data => data.forEach(drawObject));
+    .then(data => {
+      objects = data;
+      data.forEach(drawObject);
+    });
 }
 
+
 function drawObject(obj) {
+  let el = null;
+
   if (obj.shape === "circle") {
-    const circle = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "circle"
-    );
-
-    circle.setAttribute("cx", obj.x * SCALE);
-    circle.setAttribute("cy", obj.y * SCALE);
-    circle.setAttribute("r", obj.size * SCALE);
-    circle.setAttribute("fill", obj.color);
-    circle.dataset.id = obj.id;
-
-    circle.addEventListener("click", (e) => {
-      e.stopPropagation();
-      handleObjectClick(obj, circle);
-    }); 
-
-
-    svg.appendChild(circle);
+    el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    el.setAttribute("cx", obj.x * SCALE);
+    el.setAttribute("cy", obj.y * SCALE);
+    el.setAttribute("r", obj.size * SCALE);
   }
 
   if (obj.shape === "rect") {
-  const rect = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "rect"
-  );
-
-  rect.setAttribute("x", obj.x * SCALE);
-  rect.setAttribute("y", obj.y * SCALE);
-  rect.setAttribute("width", obj.width * SCALE);
-  rect.setAttribute("height", obj.height * SCALE);
-  rect.setAttribute("fill", obj.color);
-  rect.setAttribute("opacity", 0.7);
-
-  rect.addEventListener("click", (e) => {
-    e.stopPropagation();
-    handleObjectClick(obj, rect);
-  });
-
-  svg.appendChild(rect);
+    el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    el.setAttribute("x", obj.x * SCALE);
+    el.setAttribute("y", obj.y * SCALE);
+    el.setAttribute("width", obj.width * SCALE);
+    el.setAttribute("height", obj.height * SCALE);
   }
 
   if (obj.shape === "polygon") {
-  const poly = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "polygon"
-  );
+    el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    const points = (obj.points || [])
+      .map(p => `${p[0] * SCALE},${p[1] * SCALE}`)
+      .join(" ");
+    el.setAttribute("points", points);
+  }
 
-  const points = obj.points
-    .map(p => `${p[0] * SCALE},${p[1] * SCALE}`)
-    .join(" ");
+  if (!el) return;
 
-  poly.setAttribute("points", points);
-  poly.setAttribute("fill", obj.color);
-  poly.setAttribute("opacity", 0.4);
+  el.setAttribute("fill", obj.color || "#4caf50");
+  el.setAttribute("opacity", obj.shape === "polygon" ? 0.4 : 0.8);
 
-  poly.addEventListener("click", (e) => {
+  el.addEventListener("click", (e) => {
     e.stopPropagation();
-    handleObjectClick(obj, poly);
+    handleObjectClick(obj, el);
   });
 
-  svg.appendChild(poly);
-  }
+  svg.appendChild(el);
 }
 
-
-// svg.addEventListener("click", (e) => {
-//   const rect = svg.getBoundingClientRect();
-//   const x = ((e.clientX - rect.left) / SCALE).toFixed(2);
-//   const y = ((e.clientY - rect.top) / SCALE).toFixed(2);
-
-//   const obj = getCurrentObjectData(parseFloat(x), parseFloat(y));
-//   createObject(obj);
-// });
 
 svg.addEventListener("click", (e) => {
   if (currentMode !== "create") return;
@@ -210,119 +181,23 @@ svg.addEventListener("click", (e) => {
   x = snapValue(x);
   y = snapValue(y);
 
-  x = x.toFixed(2);
-  y = y.toFixed(2);
+  x = parseFloat(x.toFixed(2));
+  y = parseFloat(y.toFixed(2));
 
   const shape = document.getElementById("obj-shape").value;
 
-  
   if (shape === "polygon") {
-  const px = parseFloat(x);
-  const py = parseFloat(y);
-
-  if (polygonPoints.length > 0) {
-    const last = polygonPoints[polygonPoints.length - 1];
-    drawTempLine(last[0], last[1], px, py);
-  }
-
-  polygonPoints.push([px, py]);
-  drawTempPoint(px, py);
-  return;
-  }
-
-
-  const obj = getCurrentObjectData(parseFloat(x), parseFloat(y));
-  createObject(obj);
-});
-
-
-
-function getCurrentObjectData(x, y) {
-  const shape = document.getElementById("obj-shape").value;
-
-  const obj = {
-    type: document.getElementById("obj-type").value,
-    shape: shape,
-    name: document.getElementById("obj-name").value || "Object",
-    x: x,
-    y: y,
-    color: document.getElementById("obj-color").value
-  };
-
-  if (shape === "circle") {
-    obj.size = parseFloat(document.getElementById("obj-size").value);
-  }
-
-  if (shape === "rect") {
-    obj.width = parseFloat(document.getElementById("obj-width").value);
-    obj.height = parseFloat(document.getElementById("obj-height").value);
-  }
-
-  // if (currentMode === "create" && currentShape === "polygon") {
-  // polygonPoints.push([x, y]);
-  // drawTempPoint(x, y);
-  // }
-
-  return obj;
-}
-
-function handleObjectClick(obj, element) {
-  if (currentMode === "delete") {
-    removeObject(obj.id, element);
+    if (polygonPoints.length > 0) {
+      const last = polygonPoints[polygonPoints.length - 1];
+      drawTempLine(last[0], last[1], x, y);
+    }
+    polygonPoints.push([x, y]);
+    drawTempPoint(x, y);
     return;
   }
 
-  if (currentMode === "select") {
-    selectObject(obj, element);
-  }
-}
-
-function selectObject(obj, element) {
-  clearSelection();
-  selectedObject = element;
-
-  element.setAttribute("stroke", "black");
-  element.setAttribute("stroke-width", "2");
-
-  let info = `
-    <b>${obj.name}</b><br>
-    Тип: ${obj.type}<br>
-    Форма: ${obj.shape}<br>
-  `;
-
-  if (obj.shape !== "polygon") {
-    info += `
-      X: ${obj.x} м<br>
-      Y: ${obj.y} м<br>
-    `;
-  } else {
-    info += `
-      Точек: ${obj.points.length}<br>
-    `;
-  }
-
-  document.getElementById("object-info").innerHTML = info;
-}
-
-
-function clearSelection() {
-  const all = svg.querySelectorAll("[stroke]");
-  all.forEach(el => el.removeAttribute("stroke"));
-}
-
-function drawTempLine(x1, y1, x2, y2) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", x1 * SCALE);
-  line.setAttribute("y1", y1 * SCALE);
-  line.setAttribute("x2", x2 * SCALE);
-  line.setAttribute("y2", y2 * SCALE);
-  line.setAttribute("stroke", "#888");
-  line.setAttribute("stroke-dasharray", "4");
-
-  svg.appendChild(line);
-  tempLines.push(line);
-}
-
+  createObject(getCurrentObjectData(x, y));
+});
 
 function finishPolygon() {
   if (polygonPoints.length < 3) {
@@ -343,35 +218,6 @@ function finishPolygon() {
 }
 
 
-
-
-// function getCurrentObjectData(x, y) {
-//   return {
-//     type: document.getElementById("obj-type").value,
-//     shape: document.getElementById("obj-shape").value,
-//     name: document.getElementById("obj-name").value || "Object",
-//     x: x,
-//     y: y,
-//     size: parseFloat(document.getElementById("obj-size").value),
-//     color: document.getElementById("obj-color").value
-//   };
-// }
-
-function createObject(obj) {
-  fetch(`/api/maps/${MAP_ID}/objects`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(obj)
-  }).then(() => location.reload());
-}
-
-
-function removeObject(id, element) {
-  fetch(`/api/objects/${id}`, {
-    method: "DELETE"
-  }).then(() => element.remove());
-}
-
 function drawTempPoint(x, y) {
   const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   c.setAttribute("cx", x * SCALE);
@@ -381,5 +227,163 @@ function drawTempPoint(x, y) {
   svg.appendChild(c);
 }
 
+function drawTempLine(x1, y1, x2, y2) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", x1 * SCALE);
+  line.setAttribute("y1", y1 * SCALE);
+  line.setAttribute("x2", x2 * SCALE);
+  line.setAttribute("y2", y2 * SCALE);
+  line.setAttribute("stroke", "#888");
+  line.setAttribute("stroke-dasharray", "4");
+  svg.appendChild(line);
+  tempLines.push(line);
+}
 
+
+function handleObjectClick(obj, element) {
+  if (currentMode === "delete") {
+    removeObject(obj.id, element);
+    return;
+  }
+  if (currentMode === "select") {
+    selectObject(obj, element);
+  }
+}
+
+function selectObject(obj, element) {
+  clearSelection();
+  selectedObject = obj;
+  selectedElement = element;
+
+  element.setAttribute("stroke", "#000");
+  element.setAttribute("stroke-width", "2");
+
+  let info = `
+    <b>${obj.name || "Object"}</b><br>
+    Тип: ${obj.type}<br>
+    Форма: ${obj.shape}<br>
+  `;
+
+  if (obj.shape === "polygon") {
+    info += `Точек: ${obj.points.length}<br>`;
+  } else {
+    info += `X: ${obj.x} м<br>Y: ${obj.y} м<br>`;
+  }
+
+  if (obj.plant_name) {
+    info += `
+      Растение: ${obj.plant_name}<br>
+      Посажено: ${obj.planted_at || "-"}<br>
+      Тип грядки: ${obj.bed_type || "-"}<br>
+    `;
+  }
+
+  document.getElementById("object-info").innerHTML = info;
+}
+
+function clearSelection() {
+  svg.querySelectorAll("[stroke]").forEach(el => el.removeAttribute("stroke"));
+}
+
+
+function createObject(obj) {
+  fetch(`/api/maps/${MAP_ID}/objects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(obj)
+  }).then(() => location.reload());
+}
+
+function removeObject(id, element) {
+  fetch(`/api/objects/${id}`, { method: "DELETE" })
+    .then(() => element.remove());
+}
+
+function getCenter(obj) {
+  if (obj.shape === "circle") {
+    return { x: obj.x, y: obj.y };
+  }
+  if (obj.shape === "rect") {
+    return {
+      x: obj.x + obj.width / 2,
+      y: obj.y + obj.height / 2
+    };
+  }
+  return null;
+}
+
+function renderConflicts(compatPairs) {
+  const list = document.getElementById("conflict-list");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  const plants = objects.filter(o => o.type === "plant" && o.plant_name);
+
+  for (let i = 0; i < plants.length; i++) {
+    for (let j = i + 1; j < plants.length; j++) {
+      const a = plants[i];
+      const b = plants[j];
+
+      const ca = getCenter(a);
+      const cb = getCenter(b);
+      if (!ca || !cb) continue;
+
+      const dist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
+      if (dist > 1) continue;
+
+      const pair = compatPairs.find(p =>
+        (p.plant_a === a.plant_name && p.plant_b === b.plant_name) ||
+        (p.plant_a === b.plant_name && p.plant_b === a.plant_name)
+      );
+
+      if (pair && pair.level !== "good") {
+        const li = document.createElement("li");
+        li.textContent = `${a.plant_name} + ${b.plant_name}: ${pair.note}`;
+        list.appendChild(li);
+      }
+    }
+  }
+
+  if (!list.children.length) {
+    list.innerHTML = "<li>Нет опасных сочетаний</li>";
+  }
+}
+
+function logWatering() {
+  if (!selectedObject) {
+    alert("Выберите растение");
+    return;
+  }
+
+  fetch("/api/logs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      map_id: MAP_ID,
+      action_type: "watering",
+      plant_object_id: selectedObject.id
+    })
+  });
+}
+
+function loadLogs() {
+  fetch(`/api/logs?map_id=${MAP_ID}`)
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById("log-list");
+      if (!list) return;
+
+      list.innerHTML = "";
+      data.forEach(item => {
+        const div = document.createElement("div");
+        div.textContent =
+          `${item.created_at.slice(0,10)} — ${item.action_type}`;
+        list.appendChild(div);
+      });
+    });
+}
+
+
+drawGrid();
 loadObjects();
