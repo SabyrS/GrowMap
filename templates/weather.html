@@ -64,23 +64,53 @@
 </div>
 
 <script>
-function detectLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      function(position) {
-        document.querySelector('input[name="lat"]').value = position.coords.latitude;
-        document.querySelector('input[name="lon"]').value = position.coords.longitude;
-        document.getElementById("locationForm").submit();
-      },
-      async function() {
-        alert("Geolocation denied. Trying IP location.");
-        await submitIpLocation();
-      }
-    );
-  } else {
+async function detectLocation() {
+  if (!navigator.geolocation) {
     alert("Geolocation not supported. Trying IP location.");
-    submitIpLocation();
+    await submitIpLocation();
+    return;
   }
+
+  const submitCoords = (lat, lon) => {
+    document.querySelector('input[name="lat"]').value = lat;
+    document.querySelector('input[name="lon"]').value = lon;
+    document.getElementById("locationForm").submit();
+  };
+
+  const fallbackToIp = async (message) => {
+    if (message) alert(message);
+    await submitIpLocation();
+  };
+
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const perm = await navigator.permissions.query({ name: "geolocation" });
+      if (perm.state === "denied") {
+        await fallbackToIp("Geolocation denied. Trying IP location.");
+        return;
+      }
+    }
+  } catch (e) {
+    // Ignore permission API errors and continue with normal geolocation flow.
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+      submitCoords(position.coords.latitude, position.coords.longitude);
+    },
+    async function(error) {
+      if (error && error.code === error.PERMISSION_DENIED) {
+        await fallbackToIp("Geolocation denied. Trying IP location.");
+        return;
+      }
+      await fallbackToIp("Could not get exact location. Trying IP location.");
+    },
+    {
+      enableHighAccuracy: false,
+      timeout: 7000,
+      maximumAge: 300000
+    }
+  );
 }
 
 function useIpLocation(event) {

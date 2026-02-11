@@ -29,18 +29,57 @@ def _get_map_or_404(map_id):
     return map_data
 
 def _get_location_by_ip():
-    try:
-        r = requests.get("http://ip-api.com/json/", timeout=3)
-        data = r.json()
-        if data.get("status") == "success":
-            return {
-                "lat": data.get("lat"),
-                "lon": data.get("lon"),
-                "city": data.get("city"),
-                "country": data.get("country")
-            }
-    except Exception:
-        pass
+    providers = [
+        {
+            "url": "https://ipwho.is/",
+            "parse": lambda data: (
+                data.get("success") is True,
+                data.get("latitude"),
+                data.get("longitude"),
+                data.get("city"),
+                data.get("country")
+            )
+        },
+        {
+            "url": "https://ipapi.co/json/",
+            "parse": lambda data: (
+                data.get("latitude") is not None and data.get("longitude") is not None,
+                data.get("latitude"),
+                data.get("longitude"),
+                data.get("city"),
+                data.get("country_name")
+            )
+        },
+        {
+            "url": "http://ip-api.com/json/",
+            "parse": lambda data: (
+                data.get("status") == "success",
+                data.get("lat"),
+                data.get("lon"),
+                data.get("city"),
+                data.get("country")
+            )
+        }
+    ]
+
+    for provider in providers:
+        try:
+            r = requests.get(
+                provider["url"],
+                timeout=4,
+                headers={"User-Agent": "GrowMap/1.0"}
+            )
+            data = r.json()
+            ok, lat, lon, city, country = provider["parse"](data)
+            if ok and lat is not None and lon is not None:
+                return {
+                    "lat": lat,
+                    "lon": lon,
+                    "city": city,
+                    "country": country
+                }
+        except Exception:
+            continue
     return None
 
 def _get_weather(lat, lon):
