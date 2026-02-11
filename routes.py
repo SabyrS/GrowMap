@@ -51,6 +51,16 @@ def _get_location_by_ip():
             )
         },
         {
+            "url": "https://geolite.maxmind.com/geoip/v2.1/city/me",
+            "parse": lambda data: (
+                data.get("location", {}).get("latitude") is not None,
+                data.get("location", {}).get("latitude"),
+                data.get("location", {}).get("longitude"),
+                data.get("city", {}).get("names", {}).get("en"),
+                data.get("country", {}).get("names", {}).get("en")
+            )
+        },
+        {
             "url": "http://ip-api.com/json/",
             "parse": lambda data: (
                 data.get("status") == "success",
@@ -66,7 +76,7 @@ def _get_location_by_ip():
         try:
             r = requests.get(
                 provider["url"],
-                timeout=4,
+                timeout=3,
                 headers={"User-Agent": "GrowMap/1.0"}
             )
             data = r.json()

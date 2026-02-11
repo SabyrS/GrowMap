@@ -7,13 +7,14 @@
     <p class="badge">Live recommendation</p>
 
     <button class="button" onclick="detectLocation()" style="margin-bottom: 10px;">
-      Use my location
+      📍 Use my location
     </button>
     <button class="button ghost" onclick="useIpLocation(event)" style="margin-bottom: 15px;">
-      Use IP location
+      🌐 Use IP location (less accurate)
     </button>
+    <p style="font-size: 12px; color: #888; margin: 0;">Tip: "Use my location" is more accurate</p>
 
-    <p><strong>Location:</strong> {{ location_label or "By coordinates" }}</p>
+    <p style="margin-top: 16px;"><strong>Location:</strong> {{ location_label or "By coordinates" }}</p>
     <p><strong>Temperature:</strong> {{ weather.temp }} &deg;C</p>
     <p><strong>Wind:</strong> {{ weather.wind }} km/h</p>
 
