@@ -14,6 +14,31 @@
   </div>
 
   <aside class="info-panel">
+    <div class="card soft">
+      <h3 class="section-title">Selected object</h3>
+      <div id="object-info">Click an object to see details.</div>
+      <div style="margin-top:12px; display:grid; gap:8px;">
+        <button id="log-watering-btn" class="button ghost" onclick="logWatering()" disabled>Log watering</button>
+        <button id="log-harvest-btn" class="button ghost" onclick="openHarvest()" disabled>Log harvest</button>
+      </div>
+      <div id="harvest-form" style="margin-top:12px; display:none;">
+        <div class="form-row">
+          <label>Harvest amount</label>
+          <input id="harvest-amount" type="number" step="0.1" placeholder="Amount">
+        </div>
+        <div class="form-row">
+          <label>Unit</label>
+          <input id="harvest-unit" value="kg">
+        </div>
+        <button class="button" onclick="submitHarvest()">Save harvest</button>
+      </div>
+      <div id="harvest-result" style="margin-top:10px;"></div>
+      <div style="margin-top:16px;">
+        <h4 style="font-size:14px; margin:0 0 8px 0;">Harvest history</h4>
+        <div id="harvest-list" style="max-height:200px; overflow-y:auto;"></div>
+      </div>
+    </div>
+
     <div class="card">
       <h3 class="section-title">Create object</h3>
       <div class="form-row">
@@ -101,27 +126,6 @@
         <button class="button ghost" onclick="setMode('delete')">Delete mode</button>
         <button class="button secondary" onclick="finishPolygon()">Finish polygon</button>
       </div>
-    </div>
-
-    <div class="card soft">
-      <h3 class="section-title">Selected object</h3>
-      <div id="object-info">Click an object to see details.</div>
-      <div style="margin-top:12px; display:grid; gap:8px;">
-        <button class="button ghost" onclick="logWatering()">Log watering</button>
-        <button class="button ghost" onclick="openHarvest()">Log harvest</button>
-      </div>
-      <div id="harvest-form" style="margin-top:12px; display:none;">
-        <div class="form-row">
-          <label>Harvest amount</label>
-          <input id="harvest-amount" type="number" step="0.1" placeholder="Amount">
-        </div>
-        <div class="form-row">
-          <label>Unit</label>
-          <input id="harvest-unit" value="kg">
-        </div>
-        <button class="button" onclick="submitHarvest()">Save harvest</button>
-      </div>
-      <div id="harvest-result" style="margin-top:10px;"></div>
     </div>
 
     <div class="card">

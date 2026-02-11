@@ -72,10 +72,32 @@ function screenToSvg(screenX, screenY) {
   return { x: x / SCALE, y: y / SCALE };
 }
 
+function canLogPlantActions() {
+  return !!selectedObject && selectedObject.type !== "building";
+}
+
+function updateActionButtons() {
+  const wateringBtn = document.getElementById("log-watering-btn");
+  const harvestBtn = document.getElementById("log-harvest-btn");
+  const disabled = !canLogPlantActions();
+
+  if (wateringBtn) wateringBtn.disabled = disabled;
+  if (harvestBtn) harvestBtn.disabled = disabled;
+
+  if (disabled) {
+    const form = document.getElementById("harvest-form");
+    form.style.display = "none";
+  }
+}
+
 function setMode(mode) {
   currentMode = mode;
   selectedObject = null;
   clearSelection();
+  updateActionButtons();
+  
+  // Clear temp points when changing mode
+  clearTempPoints();
 }
 
 function drawGrid() {
@@ -299,10 +321,39 @@ function selectObject(obj, element) {
   element.setAttribute("stroke-width", "2");
 
   const info = document.getElementById("object-info");
+  
+  // Calculate area
+  let area = 0;
+  if (obj.shape === "circle") {
+    area = Math.PI * Math.pow(obj.size, 2);
+  } else if (obj.shape === "rect") {
+    area = obj.width * obj.height;
+  } else if (obj.shape === "polygon" && obj.points) {
+    // Calculate polygon area using Shoelace formula
+    const points = JSON.parse(obj.points);
+    let sum = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      sum += points[i][0] * points[j][1];
+      sum -= points[j][0] * points[i][1];
+    }
+    area = Math.abs(sum / 2);
+  }
+  const areaText = area > 0 ? `Area: ${area.toFixed(2)} m²<br>` : "";
+  
+  // Calculate age in days if planted_at exists
+  let ageText = "";
+  if (obj.planted_at) {
+    const plantedDate = new Date(obj.planted_at);
+    const today = new Date();
+    const ageInDays = Math.floor((today - plantedDate) / (1000 * 60 * 60 * 24));
+    ageText = `Age: ${ageInDays} days<br>`;
+  }
+  
   const plantBlock = obj.plant_name
-    ? `Plant: <strong>${obj.plant_name}</strong><br>
+    ? `<strong>Plant info:</strong><br>
+       Name: <strong>${obj.plant_name}</strong><br>
        Bed: ${obj.bed_type || "-"}<br>
-       Planted: ${obj.planted_at || "-"}<br>
        Water: ${obj.water_need || "-"} / Sun: ${obj.sun_need || "-"}<br>
        Avg yield: ${obj.avg_yield || "-"} ${obj.yield_unit || ""}<br>`
     : "";
@@ -311,14 +362,24 @@ function selectObject(obj, element) {
     <strong>${obj.name || "Object"}</strong><br>
     Type: ${obj.type}<br>
     Shape: ${obj.shape}<br>
-    X: ${obj.x} m, Y: ${obj.y} m<br>
+    Position: ${obj.x} m, ${obj.y} m<br>
+    ${areaText}
+    ${obj.planted_at ? `Planted: ${obj.planted_at}<br>` : ""}
+    ${ageText}
     ${plantBlock}
   `;
+
+  updateActionButtons();
+  loadHarvests();
 }
 
 function clearSelection() {
-  const all = svg.querySelectorAll("[stroke]");
-  all.forEach(el => el.removeAttribute("stroke"));
+  if (selectedElement) {
+    selectedElement.removeAttribute("stroke");
+    selectedElement.removeAttribute("stroke-width");
+    selectedElement = null;
+  }
+  document.getElementById("harvest-list").innerHTML = "";
 }
 
 function finishPolygon() {
@@ -336,6 +397,7 @@ function finishPolygon() {
   });
 
   polygonPoints = [];
+  clearTempPoints();
 }
 
 function createObject(obj) {
@@ -343,7 +405,14 @@ function createObject(obj) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(obj)
-  }).then(() => location.reload());
+  })
+    .then(r => r.json())
+    .then(newObj => {
+      objects.push(newObj);
+      drawObject(newObj);
+      renderConflicts();
+      loadLogs();
+    });
 }
 
 function removeObject(id, element) {
@@ -358,22 +427,42 @@ function drawTempPoint(x, y) {
   c.setAttribute("cy", y * SCALE);
   c.setAttribute("r", 3);
   c.setAttribute("fill", "red");
+  c.setAttribute("class", "temp-point");
   svg.appendChild(c);
 }
 
+function clearTempPoints() {
+  const tempPoints = svg.querySelectorAll(".temp-point");
+  tempPoints.forEach(point => point.remove());
+}
+
 function logWatering() {
+  if (!canLogPlantActions()) {
+    alert(selectedObject && selectedObject.type === "building"
+      ? "Watering log is unavailable for buildings"
+      : "Select an object first");
+    return;
+  }
+
   fetch("/api/logs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       map_id: MAP_ID,
       action_type: "watering",
-      plant_object_id: selectedObject ? selectedObject.id : null
+      plant_object_id: selectedObject.id
     })
   }).then(() => loadLogs());
 }
 
 function openHarvest() {
+  if (!canLogPlantActions()) {
+    alert(selectedObject && selectedObject.type === "building"
+      ? "Harvest log is unavailable for buildings"
+      : "Select an object first");
+    return;
+  }
+
   const form = document.getElementById("harvest-form");
   form.style.display = form.style.display === "none" ? "block" : "none";
 }
@@ -381,6 +470,11 @@ function openHarvest() {
 function submitHarvest() {
   if (!selectedObject) {
     alert("Select a plant first");
+    return;
+  }
+
+  if (selectedObject.type === "building") {
+    alert("Harvest log is unavailable for buildings");
     return;
   }
 
@@ -403,7 +497,51 @@ function submitHarvest() {
         data.efficiency
           ? `Efficiency: ${data.efficiency}% (avg ${data.avg_yield} ${data.yield_unit})`
           : "Harvest saved";
+      document.getElementById("harvest-amount").value = "";
+      loadHarvests();
       loadLogs();
+    });
+}
+
+function loadHarvests() {
+  if (!selectedObject) {
+    document.getElementById("harvest-list").innerHTML = "";
+    return;
+  }
+
+  fetch(`/api/harvests?plant_object_id=${selectedObject.id}`)
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById("harvest-list");
+      if (data.length === 0) {
+        list.innerHTML = "<p style='color:#666; font-size:12px;'>No harvests yet</p>";
+        return;
+      }
+      
+      list.innerHTML = data.map(h => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e0d8cd; font-size:12px;">
+          <div>
+            <strong>${h.amount} ${h.unit}</strong><br>
+            <span style="color:#666;">${h.harvested_at}</span>
+          </div>
+          <button class="button ghost" style="padding:4px 8px; font-size:11px;" onclick="deleteHarvest(${h.id})">Delete</button>
+        </div>
+      `).join("");
+    });
+}
+
+function deleteHarvest(harvestId) {
+  if (!confirm("Delete this harvest record?")) return;
+
+  fetch(`/api/harvests/${harvestId}`, {
+    method: "DELETE"
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === "ok") {
+        loadHarvests();
+        loadLogs();
+      }
     });
 }
 
@@ -475,6 +613,7 @@ function boot() {
   viewBox = { x: 0, y: 0, width: MAP_WIDTH_M * SCALE, height: MAP_HEIGHT_M * SCALE };
   svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
   svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+  updateActionButtons();
   drawGrid();
   Promise.all([loadCompat(), loadObjects()]).then(() => {
     loadLogs();
@@ -490,3 +629,4 @@ document.getElementById("obj-color").addEventListener("input", (e) => {
 });
 
 boot();
+

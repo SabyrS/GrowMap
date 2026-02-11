@@ -16,6 +16,16 @@
   </div>
 </div>
 
+<div class="card" style="margin-top:20px;">
+  <h2 class="section-title">Harvest comparison</h2>
+  <div style="height: 400px;">
+    <canvas id="harvestChart"></canvas>
+  </div>
+  <div id="harvest-placeholder" style="display:none; text-align:center; padding:40px; color:#666;">
+    <p>No harvest data yet. Start logging your harvests to see comparisons here!</p>
+  </div>
+</div>
+
 <div class="card soft" style="margin-top:20px;">
   <h3 class="section-title">Summary</h3>
   <p>{{ summary }}</p>
@@ -24,6 +34,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   const analytics = {{ analytics | tojson }};
+  const harvestAnalytics = {{ harvest_analytics | tojson }};
 
   const tempLabels = analytics.temp.map(t => t.date);
   const tempMax = analytics.temp.map(t => t.tmax);
@@ -53,5 +64,76 @@
     },
     options: { responsive: true, maintainAspectRatio: false }
   });
+
+  // Harvest comparison chart
+  if (harvestAnalytics && harvestAnalytics.plants && harvestAnalytics.plants.length > 0) {
+    document.getElementById("harvestChart").style.display = "block";
+    document.getElementById("harvest-placeholder").style.display = "none";
+    
+    new Chart(document.getElementById("harvestChart"), {
+      type: "bar",
+      data: {
+        labels: harvestAnalytics.plants,
+        datasets: [
+          {
+            label: "Expected (avg)",
+            data: harvestAnalytics.expected,
+            backgroundColor: "rgba(216,137,59,0.6)"
+          },
+          {
+            label: "Harvested",
+            data: harvestAnalytics.harvested,
+            backgroundColor: "rgba(47,107,60,0.6)"
+          }
+        ]
+      },
+      options: { 
+        responsive: true, 
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.dataset.label + ': ' + context.parsed.y.toFixed(2);
+              }
+            }
+          },
+          datalabels: {
+            display: true,
+            color: '#1b1a17',
+            anchor: 'end',
+            align: 'top',
+            formatter: function(value) {
+              return value.toFixed(1);
+            }
+          }
+        }
+      },
+      plugins: [{
+        afterDatasetsDraw: function(chart) {
+          const ctx = chart.ctx;
+          chart.data.datasets.forEach(function(dataset, i) {
+            const meta = chart.getDatasetMeta(i);
+            meta.data.forEach(function(bar, index) {
+              const data = dataset.data[index];
+              ctx.fillStyle = '#1b1a17';
+              ctx.font = 'bold 12px Arial';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'bottom';
+              ctx.fillText(data.toFixed(1), bar.x, bar.y - 5);
+            });
+          });
+        }
+      }]
+    });
+  } else {
+    document.getElementById("harvestChart").style.display = "none";
+    document.getElementById("harvest-placeholder").style.display = "block";
+  }
 </script>
 {% endblock %}

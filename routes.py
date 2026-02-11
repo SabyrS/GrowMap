@@ -1,4 +1,5 @@
 import json
+import requests
 from datetime import datetime, timedelta
 from urllib.request import urlopen
 
@@ -27,6 +28,20 @@ def _get_map_or_404(map_id):
     conn.close()
     return map_data
 
+def _get_location_by_ip():
+    try:
+        r = requests.get("http://ip-api.com/json/", timeout=3)
+        data = r.json()
+        if data.get("status") == "success":
+            return {
+                "lat": data.get("lat"),
+                "lon": data.get("lon"),
+                "city": data.get("city"),
+                "country": data.get("country")
+            }
+    except Exception:
+        pass
+    return None
 
 def _get_weather(lat, lon):
     url = (
@@ -306,7 +321,27 @@ def add_object(map_id):
         _log_action(conn, map_id, "planting", new_id, None, plant_name)
 
     conn.commit()
+    
+    # Return the created object with full data
+    created_obj = conn.execute(
+        """
+        SELECT mo.*, pc.name AS plant_name, pc.avg_yield, pc.yield_unit,
+               pc.water_need, pc.sun_need, pc.frost_sensitive, pc.heat_sensitive
+        FROM map_objects mo
+        LEFT JOIN plant_catalog pc ON pc.id = mo.plant_id
+        WHERE mo.id=?
+        """,
+        (new_id,)
+    ).fetchone()
+    
     conn.close()
+    
+    if created_obj:
+        obj = dict(created_obj)
+        if obj.get("points"):
+            obj["points"] = json.loads(obj["points"])
+        return jsonify(obj)
+    
     return jsonify({"status": "ok"})
 
 
@@ -345,7 +380,19 @@ def logs():
         data = request.json
         if not _get_map_or_404(data["map_id"]):
             return jsonify({"error": "not_found"}), 404
+        
         conn = get_db()
+        
+        # Check if action is watering or harvest and object is a building
+        if data["action_type"] in ["watering", "harvest"] and data.get("plant_object_id"):
+            obj_row = conn.execute(
+                "SELECT type FROM map_objects WHERE id=?",
+                (data["plant_object_id"],)
+            ).fetchone()
+            if obj_row and obj_row["type"] == "building":
+                conn.close()
+                return jsonify({"error": "Cannot log watering or harvest for buildings"}), 400
+        
         _log_action(
             conn,
             data["map_id"],
@@ -400,7 +447,7 @@ def add_harvest():
 
     row = conn.execute(
         """
-        SELECT mo.id
+        SELECT mo.id, mo.type
         FROM map_objects mo
         JOIN maps m ON m.id = mo.map_id
         WHERE mo.id=? AND m.user_id=?
@@ -410,6 +457,11 @@ def add_harvest():
     if not row:
         conn.close()
         return jsonify({"error": "not_found"}), 404
+    
+    # Check if object is a building
+    if row["type"] == "building":
+        conn.close()
+        return jsonify({"error": "Cannot add harvest for buildings"}), 400
 
     conn.execute(
         """
@@ -460,17 +512,116 @@ def add_harvest():
     })
 
 
+@app.route("/api/harvests", methods=["GET"])
+def get_harvests():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    plant_object_id = request.args.get("plant_object_id")
+    conn = get_db()
+    
+    if plant_object_id:
+        rows = conn.execute(
+            """
+            SELECT h.*, mo.name as object_name
+            FROM harvests h
+            JOIN map_objects mo ON mo.id = h.plant_object_id
+            WHERE h.user_id=? AND h.plant_object_id=?
+            ORDER BY h.harvested_at DESC
+            """,
+            (session["user_id"], plant_object_id)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT h.*, mo.name as object_name
+            FROM harvests h
+            JOIN map_objects mo ON mo.id = h.plant_object_id
+            WHERE h.user_id=?
+            ORDER BY h.harvested_at DESC
+            """,
+            (session["user_id"],)
+        ).fetchall()
+    
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/harvests/<int:harvest_id>", methods=["DELETE"])
+def delete_harvest(harvest_id):
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id FROM harvests WHERE id=? AND user_id=?",
+        (harvest_id, session["user_id"])
+    ).fetchone()
+    
+    if not row:
+        conn.close()
+        return jsonify({"error": "not_found"}), 404
+    
+    conn.execute("DELETE FROM harvests WHERE id=?", (harvest_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"status": "ok"})
+
+
 @app.route("/weather", methods=["GET", "POST"])
 def weather_page():
     if not _require_login():
         return redirect("/login")
 
     if request.method == "POST":
-        session["lat"] = float(request.form["lat"])
-        session["lon"] = float(request.form["lon"])
+        lat_raw = request.form.get("lat", "").strip()
+        lon_raw = request.form.get("lon", "").strip()
+        if lat_raw and lon_raw:
+            try:
+                session["lat"] = float(lat_raw)
+                session["lon"] = float(lon_raw)
+            except ValueError:
+                pass
 
-    lat = session.get("lat", DEFAULT_LAT)
-    lon = session.get("lon", DEFAULT_LON)
+    lat = session.get("lat")
+    lon = session.get("lon")
+    location_label = None
+
+    # Если координат нет => пробуем IP
+    use_ip = request.args.get("use_ip") == "1"
+    if use_ip:
+        ip_location = _get_location_by_ip()
+        if ip_location and ip_location["lat"] is not None and ip_location["lon"] is not None:
+            lat = ip_location["lat"]
+            lon = ip_location["lon"]
+            session["lat"] = lat
+            session["lon"] = lon
+            session["location_city"] = ip_location.get("city")
+            session["location_country"] = ip_location.get("country")
+
+    location_city = session.get("location_city")
+    location_country = session.get("location_country")
+
+    if lat is None or lon is None:
+        ip_location = _get_location_by_ip()
+        if ip_location and ip_location["lat"] is not None and ip_location["lon"] is not None:
+            lat = ip_location["lat"]
+            lon = ip_location["lon"]
+            session["lat"] = lat
+            session["lon"] = lon
+            location_city = ip_location.get("city")
+            location_country = ip_location.get("country")
+            session["location_city"] = location_city
+            session["location_country"] = location_country
+        else:
+            lat = DEFAULT_LAT
+            lon = DEFAULT_LON
+
+    if location_city:
+        location_label = location_city
+        if location_country:
+            location_label = f"{location_city}, {location_country}"
 
     current, forecast = _get_weather(lat, lon)
     recommendation, warnings = _make_weather_recommendation(forecast)
@@ -483,7 +634,29 @@ def weather_page():
         "forecast": forecast
     }
 
-    return render_template("weather.html", weather=weather, lat=lat, lon=lon)
+    return render_template(
+        "weather.html",
+        weather=weather,
+        lat=lat,
+        lon=lon,
+        location_label=location_label
+    )
+
+
+@app.route("/api/location/ip")
+def location_by_ip_api():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    ip_location = _get_location_by_ip()
+    if not ip_location:
+        return jsonify({"error": "ip_lookup_failed"}), 503
+
+    if ip_location["lat"] is None or ip_location["lon"] is None:
+        return jsonify({"error": "ip_lookup_incomplete"}), 503
+
+    return jsonify(ip_location)
+
 
 
 @app.route("/analytics")
@@ -504,6 +677,24 @@ def analytics_page():
         """,
         (session["user_id"],)
     ).fetchall()
+    
+    # Get harvest data grouped by plant
+    harvest_data = conn.execute(
+        """
+        SELECT COALESCE(pc.name, mo.name, 'Unknown plant') as plant_name, 
+               SUM(h.amount) as total_harvested,
+               COALESCE(pc.avg_yield, 0) as avg_yield,
+               h.unit as yield_unit,
+               COUNT(DISTINCT mo.id) as plant_count
+        FROM harvests h
+        JOIN map_objects mo ON mo.id = h.plant_object_id
+        LEFT JOIN plant_catalog pc ON pc.id = mo.plant_id
+        WHERE h.user_id = ?
+        GROUP BY COALESCE(pc.name, mo.name), COALESCE(pc.avg_yield, 0), h.unit
+        """,
+        (session["user_id"],)
+    ).fetchall()
+    
     conn.close()
 
     today = datetime.utcnow().date()
@@ -524,6 +715,17 @@ def analytics_page():
         "tmin": f["tmin"]
     } for f in forecast[:7]]
 
+    # Prepare harvest analytics
+    harvest_analytics = None
+    if harvest_data:
+        # Create labels with plant name and unit for each plant
+        plant_labels = [f"{r['plant_name']} ({r['yield_unit']})" for r in harvest_data]
+        harvest_analytics = {
+            "plants": plant_labels,
+            "harvested": [float(r["total_harvested"]) / r["plant_count"] if r["plant_count"] > 0 else 0 for r in harvest_data],
+            "expected": [float(r["avg_yield"]) for r in harvest_data]
+        }
+
     analytics = {
         "labels": labels,
         "watering": [watering_counts[d] for d in labels],
@@ -536,4 +738,4 @@ def analytics_page():
     if sum(analytics["watering"]) == 0:
         summary = "No watering events recorded."
 
-    return render_template("analytics.html", analytics=analytics, summary=summary)
+    return render_template("analytics.html", analytics=analytics, harvest_analytics=harvest_analytics, summary=summary)
