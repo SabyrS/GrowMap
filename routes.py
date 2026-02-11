@@ -106,59 +106,13 @@ def _get_location_name_by_coords(lat, lon):
             address = data.get("address", {})
             city = address.get("city") or address.get("town") or address.get("village")
             country = address.get("country")
-            if city or country:
-                return {
-                    "city": city,
-                    "country": country
-                }
-    except Exception as e:
-        print(f"Reverse geocoding error: {e}")
+            return {
+                "city": city,
+                "country": country
+            }
+    except Exception:
+        pass
     return {"city": None, "country": None}
-
-def _search_locations(query):
-    """Search for locations by name"""
-    try:
-        # Validate query
-        if not query or len(query.strip()) < 2:
-            return []
-            
-        url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=10&addressdetails=1"
-        r = requests.get(
-            url,
-            timeout=5,
-            headers={"User-Agent": "GrowMap/1.0"}
-        )
-        if r.status_code == 200:
-            results = r.json()
-            if not isinstance(results, list):
-                return []
-                
-            locations = []
-            for item in results:
-                try:
-                    address = item.get("address", {})
-                    city = address.get("city") or address.get("town") or address.get("village")
-                    country = address.get("country")
-                    
-                    lat = float(item.get("lat", 0))
-                    lon = float(item.get("lon", 0))
-                    
-                    if (city or country) and lat != 0 and lon != 0:
-                        locations.append({
-                            "name": item.get("name", ""),
-                            "lat": lat,
-                            "lon": lon,
-                            "city": city,
-                            "country": country,
-                            "display_name": item.get("display_name", "")
-                        })
-                except (ValueError, TypeError):
-                    continue
-                    
-            return locations
-    except Exception as e:
-        print(f"Location search error: {e}")
-    return []
 
 def _get_weather(lat, lon):
     url = (
@@ -752,15 +706,8 @@ def weather_page():
         if location_country:
             location_label = f"{location_city}, {location_country}"
 
-    try:
-        current, forecast = _get_weather(lat, lon)
-        recommendation, warnings = _make_weather_recommendation(forecast)
-    except Exception as e:
-        print(f"Weather fetch error: {e}")
-        current = {"temperature": None, "windspeed": None}
-        forecast = []
-        recommendation = "Unable to fetch weather data"
-        warnings = []
+    current, forecast = _get_weather(lat, lon)
+    recommendation, warnings = _make_weather_recommendation(forecast)
 
     weather = {
         "temp": current.get("temperature"),
@@ -813,19 +760,6 @@ def location_reverse_api():
 
     location_name = _get_location_name_by_coords(lat, lon)
     return jsonify(location_name)
-
-
-@app.route("/api/location/search")
-def location_search_api():
-    if not _require_login():
-        return jsonify({"error": "unauthorized"}), 401
-
-    query = request.args.get("q", "").strip()
-    if not query or len(query) < 2:
-        return jsonify({"error": "query_too_short"}), 400
-
-    results = _search_locations(query)
-    return jsonify({"results": results})
 
 
 @app.route("/analytics")
