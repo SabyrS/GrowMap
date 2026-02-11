@@ -37,12 +37,12 @@
     <form method="post" id="locationForm">
       <div class="form-row">
         <label>Latitude</label>
-        <input type="number" step="0.0001" name="lat" value="{{ lat }}">
+        <input type="number" step="0.0001" name="lat" value="{{ lat or '' }}">
       </div>
 
       <div class="form-row">
         <label>Longitude</label>
-        <input type="number" step="0.0001" name="lon" value="{{ lon }}">
+        <input type="number" step="0.0001" name="lon" value="{{ lon or '' }}">
       </div>
 
       <button class="button ghost" type="submit">
@@ -126,25 +126,32 @@ function displaySearchResults(results) {
   }
 
   let html = '';
-  for (const result of results) {
-    const display = result.city ? `${result.city}, ${result.country}` : result.country;
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const display = result.city ? `${result.city}, ${result.country}` : result.country || 'Unknown';
+    const latLonDisplay = `${result.lat.toFixed(2)}°N ${result.lon.toFixed(2)}°E`;
+    
     html += `
-      <div style="padding: 12px; border-bottom: 1px solid #333; cursor: pointer; hover: background: #2a2a2a;" 
+      <div style="padding: 12px; border-bottom: 1px solid #333; cursor: pointer;" 
            onmouseover="this.style.background='#2a2a2a'" 
            onmouseout="this.style.background='transparent'"
-           onclick="selectLocation(${result.lat}, ${result.lon}, '${display}')">
+           onclick="selectLocationByIndex(${i})">
         <strong>${display}</strong><br>
-        <small style="color: #888;">${result.lat.toFixed(2)}°N ${result.lon.toFixed(2)}°E</small>
+        <small style="color: #888;">${latLonDisplay}</small>
       </div>
     `;
   }
 
   container.innerHTML = html;
+  window.searchResults = results; // Store results globally
 }
 
-function selectLocation(lat, lon, display) {
-  document.querySelector('input[name="lat"]').value = lat;
-  document.querySelector('input[name="lon"]').value = lon;
+function selectLocationByIndex(index) {
+  if (!window.searchResults || !window.searchResults[index]) return;
+  
+  const result = window.searchResults[index];
+  document.querySelector('input[name="lat"]').value = result.lat;
+  document.querySelector('input[name="lon"]').value = result.lon;
   closeSearchModal();
   
   // Submit the form with the selected location
