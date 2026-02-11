@@ -164,6 +164,3 @@ requests==2.31.0
 
 ## Contributing
 For adding new plants to the catalog or compatibility rules, see the SQL examples in [tempa.py](tempa.py).
-
-## License
-MIT (or your preferred license)
