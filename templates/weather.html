@@ -7,10 +7,10 @@
     <p class="badge">Live recommendation</p>
 
     <button class="button" onclick="detectLocation()" style="margin-bottom: 10px;">
-      📍 Use my location
+      Use my location
     </button>
     <button class="button ghost" onclick="useIpLocation(event)" style="margin-bottom: 15px;">
-      🌐 Use IP location (less accurate)
+      Use IP location (less accurate)
     </button>
     <p style="font-size: 12px; color: #888; margin: 0;">Tip: "Use my location" is more accurate</p>
 
@@ -65,6 +65,18 @@
 </div>
 
 <script>
+async function getLocationNameByCoords(lat, lon) {
+  try {
+    const res = await fetch(`/api/location/reverse?lat=${lat}&lon=${lon}`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error("Reverse geocoding failed:", e);
+  }
+  return null;
+}
+
 async function detectLocation() {
   if (!navigator.geolocation) {
     alert("Geolocation not supported. Trying IP location.");
@@ -72,10 +84,20 @@ async function detectLocation() {
     return;
   }
 
-  const submitCoords = (lat, lon) => {
+  const submitCoords = async (lat, lon) => {
     document.querySelector('input[name="lat"]').value = lat;
     document.querySelector('input[name="lon"]').value = lon;
-    document.getElementById("locationForm").submit();
+    
+    // Get city and country by coordinates
+    const location = await getLocationNameByCoords(lat, lon);
+    if (location && location.city) {
+      // Submit with location info via query parameter
+      const form = document.getElementById("locationForm");
+      form.action = "/weather?from_browser=1";
+      form.submit();
+    } else {
+      document.getElementById("locationForm").submit();
+    }
   };
 
   const fallbackToIp = async (message) => {

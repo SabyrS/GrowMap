@@ -92,6 +92,28 @@ def _get_location_by_ip():
             continue
     return None
 
+def _get_location_name_by_coords(lat, lon):
+    """Get city and country name by coordinates using reverse geocoding"""
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
+        r = requests.get(
+            url,
+            timeout=3,
+            headers={"User-Agent": "GrowMap/1.0"}
+        )
+        if r.status_code == 200:
+            data = r.json()
+            address = data.get("address", {})
+            city = address.get("city") or address.get("town") or address.get("village")
+            country = address.get("country")
+            return {
+                "city": city,
+                "country": country
+            }
+    except Exception:
+        pass
+    return {"city": None, "country": None}
+
 def _get_weather(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
@@ -628,10 +650,20 @@ def weather_page():
         lon_raw = request.form.get("lon", "").strip()
         if lat_raw and lon_raw:
             try:
-                session["lat"] = float(lat_raw)
-                session["lon"] = float(lon_raw)
+                lat = float(lat_raw)
+                lon = float(lon_raw)
+                session["lat"] = lat
+                session["lon"] = lon
+                
+                # Get city and country by coordinates for browser geolocation
+                location_name = _get_location_name_by_coords(lat, lon)
+                if location_name.get("city"):
+                    session["location_city"] = location_name.get("city")
+                    session["location_country"] = location_name.get("country")
+                session.modified = True
             except ValueError:
                 pass
+        return redirect("/weather")
 
     lat = session.get("lat")
     lon = session.get("lon")
@@ -648,6 +680,7 @@ def weather_page():
             session["lon"] = lon
             session["location_city"] = ip_location.get("city")
             session["location_country"] = ip_location.get("country")
+            session.modified = True
 
     location_city = session.get("location_city")
     location_country = session.get("location_country")
@@ -663,6 +696,7 @@ def weather_page():
             location_country = ip_location.get("country")
             session["location_city"] = location_city
             session["location_country"] = location_country
+            session.modified = True
         else:
             lat = DEFAULT_LAT
             lon = DEFAULT_LON
@@ -706,6 +740,26 @@ def location_by_ip_api():
 
     return jsonify(ip_location)
 
+
+@app.route("/api/location/reverse")
+def location_reverse_api():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+
+    if not lat or not lon:
+        return jsonify({"error": "missing_coordinates"}), 400
+
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except ValueError:
+        return jsonify({"error": "invalid_coordinates"}), 400
+
+    location_name = _get_location_name_by_coords(lat, lon)
+    return jsonify(location_name)
 
 
 @app.route("/analytics")
