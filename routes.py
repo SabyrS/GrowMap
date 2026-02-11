@@ -114,6 +114,36 @@ def _get_location_name_by_coords(lat, lon):
         pass
     return {"city": None, "country": None}
 
+def _search_locations(query):
+    """Search for locations by name"""
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={query}&format=json&limit=10&addressdetails=1"
+        r = requests.get(
+            url,
+            timeout=3,
+            headers={"User-Agent": "GrowMap/1.0"}
+        )
+        if r.status_code == 200:
+            results = r.json()
+            locations = []
+            for item in results:
+                address = item.get("address", {})
+                city = address.get("city") or address.get("town") or address.get("village")
+                country = address.get("country")
+                if city or country:
+                    locations.append({
+                        "name": item.get("name", ""),
+                        "lat": float(item.get("lat", 0)),
+                        "lon": float(item.get("lon", 0)),
+                        "city": city,
+                        "country": country,
+                        "display_name": item.get("display_name", "")
+                    })
+            return locations
+    except Exception:
+        pass
+    return []
+
 def _get_weather(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
@@ -760,6 +790,19 @@ def location_reverse_api():
 
     location_name = _get_location_name_by_coords(lat, lon)
     return jsonify(location_name)
+
+
+@app.route("/api/location/search")
+def location_search_api():
+    if not _require_login():
+        return jsonify({"error": "unauthorized"}), 401
+
+    query = request.args.get("q", "").strip()
+    if not query or len(query) < 2:
+        return jsonify({"error": "query_too_short"}), 400
+
+    results = _search_locations(query)
+    return jsonify({"results": results})
 
 
 @app.route("/analytics")

@@ -9,8 +9,8 @@
     <button class="button" onclick="detectLocation()" style="margin-bottom: 10px;">
       Use my location
     </button>
-    <button class="button ghost" onclick="useIpLocation(event)" style="margin-bottom: 15px;">
-      Use IP location (less accurate)
+    <button class="button ghost" onclick="showSearchLocations()" style="margin-bottom: 15px;">
+      Search location
     </button>
     <p style="font-size: 12px; color: #888; margin: 0;">Tip: "Use my location" is more accurate</p>
 
@@ -64,7 +64,94 @@
   </div>
 </div>
 
+<!-- Search Locations Modal -->
+<div id="searchModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+  <div style="background: #1a1a1a; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow: auto; padding: 20px; color: #fff;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2 style="margin: 0;">Search Locations</h2>
+      <button style="background: none; border: none; color: #fff; font-size: 24px; cursor: pointer;" onclick="closeSearchModal()">×</button>
+    </div>
+    
+    <input type="text" id="locationSearch" placeholder="Search city or country..." 
+           style="width: 100%; padding: 10px; margin-bottom: 20px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; color: #fff; font-size: 14px;"
+           onkeyup="searchLocations(this.value)">
+    
+    <div id="searchResults" style="max-height: 60vh; overflow-y: auto;">
+      <!-- Results will be populated here -->
+    </div>
+  </div>
+</div>
+
 <script>
+let searchTimeout;
+
+function showSearchLocations() {
+  const modal = document.getElementById('searchModal');
+  modal.style.display = 'flex';
+  document.getElementById('locationSearch').focus();
+}
+
+function closeSearchModal() {
+  document.getElementById('searchModal').style.display = 'none';
+  document.getElementById('locationSearch').value = '';
+  document.getElementById('searchResults').innerHTML = '';
+}
+
+async function searchLocations(query) {
+  if (!query || query.length < 2) {
+    document.getElementById('searchResults').innerHTML = '';
+    return;
+  }
+
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/location/search?q=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || [];
+        displaySearchResults(results);
+      }
+    } catch (e) {
+      console.error("Location search failed:", e);
+    }
+  }, 300);
+}
+
+function displaySearchResults(results) {
+  const container = document.getElementById('searchResults');
+  if (!results || results.length === 0) {
+    container.innerHTML = '<p style="color: #888;">No results found</p>';
+    return;
+  }
+
+  let html = '';
+  for (const result of results) {
+    const display = result.city ? `${result.city}, ${result.country}` : result.country;
+    html += `
+      <div style="padding: 12px; border-bottom: 1px solid #333; cursor: pointer; hover: background: #2a2a2a;" 
+           onmouseover="this.style.background='#2a2a2a'" 
+           onmouseout="this.style.background='transparent'"
+           onclick="selectLocation(${result.lat}, ${result.lon}, '${display}')">
+        <strong>${display}</strong><br>
+        <small style="color: #888;">${result.lat.toFixed(2)}°N ${result.lon.toFixed(2)}°E</small>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+function selectLocation(lat, lon, display) {
+  document.querySelector('input[name="lat"]').value = lat;
+  document.querySelector('input[name="lon"]').value = lon;
+  closeSearchModal();
+  
+  // Submit the form with the selected location
+  document.getElementById("locationForm").action = "/weather";
+  document.getElementById("locationForm").submit();
+}
+
 async function getLocationNameByCoords(lat, lon) {
   try {
     const res = await fetch(`/api/location/reverse?lat=${lat}&lon=${lon}`);
@@ -79,8 +166,7 @@ async function getLocationNameByCoords(lat, lon) {
 
 async function detectLocation() {
   if (!navigator.geolocation) {
-    alert("Geolocation not supported. Trying IP location.");
-    await submitIpLocation();
+    alert("Geolocation not supported. Please search for location manually.");
     return;
   }
 
@@ -100,16 +186,11 @@ async function detectLocation() {
     }
   };
 
-  const fallbackToIp = async (message) => {
-    if (message) alert(message);
-    await submitIpLocation();
-  };
-
   try {
     if (navigator.permissions && navigator.permissions.query) {
       const perm = await navigator.permissions.query({ name: "geolocation" });
       if (perm.state === "denied") {
-        await fallbackToIp("Geolocation denied. Trying IP location.");
+        alert("Geolocation denied. Please search for location manually.");
         return;
       }
     }
@@ -121,12 +202,8 @@ async function detectLocation() {
     function(position) {
       submitCoords(position.coords.latitude, position.coords.longitude);
     },
-    async function(error) {
-      if (error && error.code === error.PERMISSION_DENIED) {
-        await fallbackToIp("Geolocation denied. Trying IP location.");
-        return;
-      }
-      await fallbackToIp("Could not get exact location. Trying IP location.");
+    function(error) {
+      alert("Could not get exact location. Please search for location manually.");
     },
     {
       enableHighAccuracy: false,
@@ -134,27 +211,3 @@ async function detectLocation() {
       maximumAge: 300000
     }
   );
-}
-
-function useIpLocation(event) {
-  event.preventDefault();
-  submitIpLocation();
-}
-
-async function submitIpLocation() {
-  try {
-    const res = await fetch("/api/location/ip");
-    if (!res.ok) {
-      throw new Error("IP lookup failed");
-    }
-    const data = await res.json();
-    document.querySelector('input[name="lat"]').value = data.lat;
-    document.querySelector('input[name="lon"]').value = data.lon;
-    document.getElementById("locationForm").submit();
-  } catch (err) {
-    window.location.href = "/weather?use_ip=1";
-  }
-}
-</script>
-
-{% endblock %}
